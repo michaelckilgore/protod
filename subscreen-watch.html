@@ -538,12 +538,30 @@
     return { areasIncluded, primaryThreats };
   }
 
+  function canReuseCached(base, cached) {
+    if (!base || !cached) return false;
+    const baseNum = digitsOnly(base.number || base.mapNumber);
+    const cachedNum = digitsOnly(cached.number || cached.mapNumber);
+    if (!baseNum || !cachedNum || baseNum !== cachedNum) return false;
+
+    const baseIssued = normalizeBlockText(base.issuedAt || '');
+    const cachedIssued = normalizeBlockText(cached.issuedAt || '');
+    if (baseIssued && cachedIssued && baseIssued !== cachedIssued) return false;
+
+    const baseExp = normalizeBlockText(base.expiresAtEt || '');
+    const cachedExp = normalizeBlockText(cached.expiresAtEt || '');
+    if (baseExp && cachedExp && baseExp !== cachedExp) return false;
+
+    const baseType = normalizeBlockText(base.watchType || '').toLowerCase();
+    const cachedType = normalizeBlockText(cached.watchType || '').toLowerCase();
+    if (baseType && cachedType && baseType !== cachedType) return false;
+
+    return true;
+  }
+
   function mergeSameWatch(base, cached) {
-    if (!base) return cached || null;
-    if (!cached) return base;
-    if (digitsOnly(base.number) && digitsOnly(cached.number) && digitsOnly(base.number) !== digitsOnly(cached.number)) {
-      return base;
-    }
+    if (!base) return null;
+    if (!cached || !canReuseCached(base, cached)) return base;
     return {
       ...cached,
       ...base,
@@ -596,9 +614,7 @@
     normalized.mapNumber = digitsOnly(normalized.mapNumber || normalized.number) || digitsOnly(FALLBACK_SAMPLE.number);
     normalized.watchType = normalized.watchType || FALLBACK_SAMPLE.watchType;
 
-    if (!normalized.issuedAt) normalized.issuedAt = FALLBACK_SAMPLE.issuedAt;
-    if (normalized.mode !== 'sample' && !normalized.expiresAtEt) normalized.expiresAtEt = FALLBACK_SAMPLE.expiresAtEt;
-    if (normalized.mode !== 'sample' && !normalized.expiresAtNative) normalized.expiresAtNative = normalized.expiresAtEt || FALLBACK_SAMPLE.expiresAtNative;
+    if (normalized.mode !== 'sample' && !normalized.expiresAtNative) normalized.expiresAtNative = normalized.expiresAtEt || '';
 
     return normalized;
   }
@@ -659,9 +675,9 @@
     document.documentElement.style.setProperty('--header-bg', headerTheme(headerTitle));
     el('watch-type-header').textContent = headerTitle.toUpperCase();
     el('watch-number-header').textContent = watchNumberLabel;
-    el('issued-value').textContent = watch.issuedAt || '--';
-    el('threats-body').textContent = watch.primaryThreats || 'Primary threats unavailable.';
-    el('areas-body').textContent = watch.areasIncluded || 'Areas included unavailable.';
+    el('issued-value').textContent = watch.issuedAt || 'Data not currently available';
+    el('threats-body').textContent = watch.primaryThreats || 'Data not currently available';
+    el('areas-body').textContent = watch.areasIncluded || 'Data not currently available';
     el('map-subtitle').textContent = sampleMode
       ? 'Most recently issued watch preview'
       : 'Overview image for the current active watch';
@@ -683,8 +699,8 @@
       el('screen').classList.remove('sample');
       el('valid-until-sample').classList.add('hidden');
       el('valid-until-normal').classList.remove('hidden');
-      el('valid-et').textContent = watch.expiresAtEt || '--';
-      el('valid-native').textContent = watch.expiresAtNative || watch.expiresAtEt || '--';
+      el('valid-et').textContent = watch.expiresAtEt || 'Data not currently available';
+      el('valid-native').textContent = watch.expiresAtNative || watch.expiresAtEt || 'Data not currently available';
     }
 
     const img = el('watch-map');
