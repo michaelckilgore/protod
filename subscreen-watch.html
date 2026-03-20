@@ -584,8 +584,11 @@
 
   function initWatch() {
     const params = new URLSearchParams(window.location.search);
-    const watch = params.get("watch") || params.get("spc");
-    const watchTypeParam = params.get("type") || params.get("label") || "";
+    const sampleMode = params.get("sample") !== "0";
+    const fallbackWatch = "50";
+    const fallbackType = "Tornado";
+    const watch = params.get("watch") || params.get("spc") || (sampleMode ? fallbackWatch : "");
+    const watchTypeParam = params.get("type") || params.get("label") || (sampleMode ? fallbackType : "");
 
     if (!watch) {
       document.getElementById("watch-title").textContent = "NO WATCH NUMBER";
@@ -601,6 +604,7 @@
       return;
     }
 
+    const usingSample = !params.get("watch") && !params.get("spc") && sampleMode;
     const watchNumber = String(watch).replace(/\D/g, "") || String(watch);
     const padded = padWatchNumber(watchNumber);
     const type = inferWatchType(watchTypeParam);
@@ -613,18 +617,24 @@
     });
 
     document.getElementById("watch-title").textContent = type === "SPC" ? "WATCH #" + watchNumber : type.toUpperCase() + " WATCH #" + watchNumber;
-    document.getElementById("watch-subtitle").textContent = "Storm Prediction Center overview map";
+    document.getElementById("watch-subtitle").textContent = usingSample ? "Storm Prediction Center overview map · sample preview" : "Storm Prediction Center overview map";
     document.getElementById("watch-number-text").textContent = "#" + watchNumber;
     document.getElementById("hero-title").textContent = type === "SPC" ? "National SPC Watch" : type + " Watch";
-    document.getElementById("hero-copy").textContent = "Monitor the current watch area on the overview map while the dashboard remains in normal severe-weather rotation.";
+    document.getElementById("hero-copy").textContent = usingSample
+      ? "Sample preview mode is active so you can review the watch layout even when there are no live SPC watches."
+      : "Monitor the current watch area on the overview map while the dashboard remains in normal severe-weather rotation.";
     document.getElementById("watch-type").textContent = type;
-    document.getElementById("watch-status").textContent = "Active";
+    document.getElementById("watch-status").textContent = usingSample ? "Sample" : "Active";
     document.getElementById("watch-badge").textContent = type === "SPC" ? "SPC Watch" : type + " Watch";
-    document.getElementById("status-text").textContent = "This screen is presenting live Storm Prediction Center watch coverage for watch #" + watchNumber + ".";
+    document.getElementById("status-text").textContent = usingSample
+      ? "This screen is presenting sample Storm Prediction Center watch coverage for preview and layout testing using watch #" + watchNumber + "."
+      : "This screen is presenting live Storm Prediction Center watch coverage for watch #" + watchNumber + ".";
     document.getElementById("watch-map-url").textContent = mapUrl;
-    document.getElementById("map-caption").textContent = "Active watch image for SPC watch #" + watchNumber;
-    document.getElementById("map-updated").textContent = "Loaded " + nowLabel;
-    document.getElementById("message-text").textContent = getMessageForType(type, watchNumber);
+    document.getElementById("map-caption").textContent = usingSample ? "Sample watch image for preview using SPC watch #" + watchNumber : "Active watch image for SPC watch #" + watchNumber;
+    document.getElementById("map-updated").textContent = (usingSample ? "Sample loaded " : "Loaded ") + nowLabel;
+    document.getElementById("message-text").textContent = usingSample
+      ? "Sample preview mode: this layout is showing watch #" + watchNumber + " so you can evaluate the design when no current watches exist."
+      : getMessageForType(type, watchNumber);
 
     const img = document.getElementById("watch-map");
     img.src = mapUrl;
