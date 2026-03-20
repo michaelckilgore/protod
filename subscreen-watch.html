@@ -1,18 +1,805 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Watch Screen</title>
+<title>SPC Watch Screen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-/* NOTE: preserving layout intent - no visual redesign */
+  :root {
+    --bg-top: #0b3366;
+    --bg-mid: #071d3d;
+    --bg-bottom: #020c1b;
+    --panel-bg: rgba(7, 18, 39, 0.92);
+    --panel-border: rgba(255,255,255,0.10);
+    --text: #eef6ff;
+    --muted: #bed2e8;
+    --soft: #87a9ca;
+    --header-bg: linear-gradient(180deg, #cf2020 0%, #981414 100%);
+    --header-text: #ffffff;
+    --header-shadow: rgba(0,0,0,0.45);
+    --accent: #d9e8f7;
+    --line: rgba(255,255,255,0.08);
+    --shadow: 0 14px 34px rgba(0,0,0,0.34);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: Arial, Helvetica, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(circle at 50% -12%, rgba(255,255,255,0.08), transparent 34%),
+      linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 42%, var(--bg-bottom) 100%);
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.16;
+    background:
+      linear-gradient(90deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 100%),
+      linear-gradient(180deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 100%);
+    background-size: 72px 72px;
+  }
+
+  .screen {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-rows: 108px 1fr 40px;
+    gap: 14px;
+    padding: 12px 16px 10px;
+  }
+
+  .header {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) 190px;
+    gap: 16px;
+    align-items: center;
+    padding: 12px 18px 10px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: var(--header-bg);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .header::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.10), transparent 42%, rgba(0,0,0,0.08));
+    pointer-events: none;
+  }
+
+  .header-left {
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .watch-type {
+    font-size: 42px;
+    line-height: 1;
+    font-weight: 900;
+    color: var(--header-text);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 2px 8px var(--header-shadow);
+  }
+
+  .watch-number {
+    margin-top: 8px;
+    font-size: 27px;
+    line-height: 1;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    text-shadow:
+      0 1px 0 rgba(0,0,0,0.85),
+      0 -1px 0 rgba(0,0,0,0.55),
+      1px 0 0 rgba(0,0,0,0.65),
+      -1px 0 0 rgba(0,0,0,0.65),
+      0 2px 6px rgba(0,0,0,0.45);
+  }
+
+  .clock-wrap {
+    justify-self: end;
+    text-align: right;
+    position: relative;
+    z-index: 1;
+  }
+
+  .clock-label {
+    font-size: 14px;
+    line-height: 1;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0.92;
+    margin-bottom: 8px;
+    text-shadow: 0 1px 5px rgba(0,0,0,0.35);
+  }
+
+  .clock {
+    font-size: 30px;
+    line-height: 1;
+    font-weight: 900;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  }
+
+  .content {
+    display: grid;
+    grid-template-columns: minmax(0, 50%) minmax(0, 1fr);
+    gap: 16px;
+    min-height: 0;
+  }
+
+  .panel {
+    min-height: 0;
+    border-radius: 20px;
+    border: 1px solid var(--panel-border);
+    background: linear-gradient(180deg, rgba(10,25,52,0.94), rgba(4,12,28,0.96));
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    pointer-events: none;
+  }
+
+  .map-panel {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .map-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .map-title {
+    font-size: 24px;
+    font-weight: 900;
+    color: #f4fbff;
+    letter-spacing: 0.4px;
+  }
+
+  .map-subtitle {
+    margin-top: 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--soft);
+  }
+
+  .sample-chip {
+    display: none;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: #ffe4e4;
+    border: 1px solid rgba(255, 136, 136, 0.45);
+    background: linear-gradient(180deg, rgba(143, 23, 23, 0.38), rgba(95, 14, 14, 0.22));
+  }
+
+  .sample .sample-chip {
+    display: inline-flex;
+  }
+
+  .map-frame {
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    padding: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+  }
+
+  .map-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    border-radius: 12px;
+    background: #060d19;
+  }
+
+  .map-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 14px;
+    line-height: 1.25;
+    color: var(--soft);
+  }
+
+  .right-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, var(--threat-row, 1.08fr)) minmax(0, var(--area-row, 0.92fr));
+    gap: 12px;
+    padding: 14px;
+    min-height: 0;
+  }
+
+  .time-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .time-card,
+  .text-card {
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
+    padding: 14px 16px;
+    min-height: 0;
+  }
+
+  .time-label,
+  .text-label {
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 900;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    color: #9fc1df;
+    margin-bottom: 10px;
+  }
+
+  .time-value,
+  .time-value-dual,
+  .time-value-sample {
+    font-weight: 900;
+    line-height: 1.15;
+    color: #ffffff;
+  }
+
+  .time-value { font-size: 28px; }
+
+  .time-value-dual {
+    display: grid;
+    gap: 4px;
+    font-size: 24px;
+  }
+
+  .time-value-sample {
+    font-size: 24px;
+    color: #ffd2d2;
+  }
+
+  .text-card {
+    display: grid;
+    grid-template-rows: auto 1fr;
+  }
+
+  .text-body {
+    min-height: 0;
+    color: #f4f8fc;
+    white-space: pre-wrap;
+    word-break: normal;
+    overflow: hidden;
+  }
+
+  .dynamic-card {
+    min-height: 0;
+  }
+
+  .threats-body {
+    font-size: 24px;
+    line-height: 1.22;
+  }
+
+  .areas-body {
+    font-size: 21px;
+    line-height: 1.22;
+  }
+
+  .tight-1 .threats-body { font-size: 22px; line-height: 1.19; }
+  .tight-1 .areas-body { font-size: 19px; line-height: 1.18; }
+  .tight-2 .threats-body { font-size: 20px; line-height: 1.15; }
+  .tight-2 .areas-body { font-size: 18px; line-height: 1.14; }
+
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 14px;
+    text-align: center;
+    color: #98b3cf;
+    font-size: 16px;
+    line-height: 1.2;
+    letter-spacing: 0.2px;
+  }
+
+  .hidden { display: none !important; }
+
+.layout-version-stamp{
+  font-size:11px;
+  color:rgba(255,255,255,0.72);
+  margin:4px 0 0 8px;
+  letter-spacing:0.2px;
+  text-shadow:0 1px 1px rgba(0,0,0,0.45);
+}
+
 </style>
 </head>
 <body>
+  <div class="layout-version-stamp">layout version 079.1 – created 2026-03-20 18:42 ET</div>
 
-<!-- Existing layout assumed preserved -->
-<div class="areas">
-Data not currently available
+<div id="screen" class="screen">
+  <div class="header">
+    <div class="header-left">
+      <div id="watch-type-header" class="watch-type">SEVERE THUNDERSTORM WATCH</div>
+      <div id="watch-number-header" class="watch-number">WATCH #0000</div>
+    </div>
+    <div class="clock-wrap">
+      <div class="clock-label">Current Time</div>
+      <div id="clock" class="clock">--:--</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="panel map-panel">
+      <div class="map-label">
+        <div>
+          <div class="map-title">Storm Prediction Center Watch Map</div>
+          <div id="map-subtitle" class="map-subtitle">Overview image for the selected watch</div>
+        </div>
+        <div id="sample-chip" class="sample-chip">Expired Sample</div>
+      </div>
+
+      <div class="map-frame">
+        <img id="watch-map" alt="SPC watch overview map">
+      </div>
+
+      <div class="map-footer">
+        <div id="map-caption">Loading watch map...</div>
+        <div id="map-updated">Stand by</div>
+      </div>
+    </div>
+
+    <div class="panel right-panel">
+      <div class="time-row">
+        <div class="time-card">
+          <div class="time-label">Issued</div>
+          <div id="issued-value" class="time-value">--</div>
+        </div>
+        <div class="time-card">
+          <div class="time-label">Valid Until</div>
+          <div id="valid-until-normal" class="time-value-dual hidden">
+            <div id="valid-et">--</div>
+            <div id="valid-native">--</div>
+          </div>
+          <div id="valid-until-sample" class="time-value-sample hidden">EXPIRED - SAMPLE</div>
+        </div>
+      </div>
+
+      <div class="text-card">
+        <div class="text-label">Primary Threats</div>
+        <div id="threats-body" class="text-body threats-body">Loading...</div>
+      </div>
+
+      <div class="text-card dynamic-card">
+        <div class="text-label">Areas Included</div>
+        <div id="areas-body" class="text-body areas-body">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer" class="footer">Loading Storm Prediction Center watch information.</div>
 </div>
+
+
+<script>
+(function () {
+  const SCREEN_ROTATE_MS = 5000;
+  const API_URL = '/api/spc-watches';
+  const CACHE_KEY = 'sugarhill:lastWatchData';
+  const FALLBACK_SAMPLE = {
+    number: 71,
+    watchType: 'Severe Thunderstorm Watch',
+    isPds: false,
+    issuedAt: '4:05 PM EDT',
+    expiresAtEt: '10:00 PM EDT',
+    expiresAtNative: '9:00 PM CDT',
+    areasIncluded: 'Severe Thunderstorm Watch for portions of\n\nDelaware\nCentral and Eastern Maryland\nNortheast North Carolina\nSouthern New Jersey\nSoutheast and Central Virginia\nCoastal Waters',
+    primaryThreats: '* Primary threats include...\n     Scattered damaging wind gusts to 70 mph possible\n     A tornado or two possible',
+    mapNumber: 71,
+    mode: 'sample'
+  };
+
+  const el = (id) => document.getElementById(id);
+  const params = new URLSearchParams(window.location.search);
+
+  function updateClock() {
+    el('clock').textContent = new Date().toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short'
+    });
+  }
+
+  function padWatchNumber(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    return (digits || '0').padStart(4, '0');
+  }
+
+  function digitsOnly(value) {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  function normalizeBlockText(value) {
+    return String(value || '')
+      .replace(/\r/g, '')
+      .replace(/\t/g, '     ')
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ ]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function detectType(rawType, isPds) {
+    const value = String(rawType || '').toLowerCase();
+    const pds = Boolean(isPds) || value.includes('pds') || value.includes('particularly dangerous');
+    const tornado = value.includes('tornado');
+    const severe = value.includes('severe');
+
+    if (tornado && pds) return 'PDS Tornado Watch';
+    if (severe && pds) return 'PDS Severe Thunderstorm Watch';
+    if (tornado) return 'Tornado Watch';
+    if (severe) return 'Severe Thunderstorm Watch';
+    return pds ? 'PDS Severe Thunderstorm Watch' : 'Severe Thunderstorm Watch';
+  }
+
+  function headerTheme(type) {
+    const value = String(type || '').toLowerCase();
+    if (value.includes('pds tornado')) {
+      return 'linear-gradient(180deg, #8b1111 0%, #5e0909 100%)';
+    }
+    if (value.includes('tornado')) {
+      return 'linear-gradient(180deg, #d72424 0%, #8e1313 100%)';
+    }
+    if (value.includes('pds severe')) {
+      return 'linear-gradient(180deg, #c18d11 0%, #7b5707 100%)';
+    }
+    return 'linear-gradient(180deg, #f3c62f 0%, #b88408 100%)';
+  }
+
+  function choose(obj, keys, fallback = '') {
+    for (const key of keys) {
+      const value = key.split('.').reduce((acc, part) => acc && acc[part], obj);
+      if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+    }
+    return fallback;
+  }
+
+  function readProductText(raw) {
+    return normalizeBlockText(
+      choose(raw, [
+        'productText',
+        'rawText',
+        'text',
+        'description',
+        'details',
+        'product.text',
+        'product.description',
+        'properties.description'
+      ])
+    );
+  }
+
+  function parseSectionsFromText(productText, watchType) {
+    const text = normalizeBlockText(productText);
+    if (!text) return { areasIncluded: '', primaryThreats: '' };
+
+    let areasIncluded = '';
+    let primaryThreats = '';
+
+    const areasMatch =
+      text.match(/(?:^|\n)(PDS\s+)?(?:SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i) ||
+      text.match(/(?:^|\n)(?:WATCH FOR PORTIONS OF[\s\S]*?)(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i);
+
+    if (areasMatch) {
+      areasIncluded = normalizeBlockText(areasMatch[0]).replace(/^\n+/, '');
+      areasIncluded = areasIncluded.replace(/^[\s*]+/, '');
+      if (!/watch for portions of/i.test(areasIncluded) && watchType) {
+        areasIncluded = watchType + ' for portions of\n\n' + areasIncluded;
+      }
+    }
+
+    const threatMatch =
+      text.match(/(?:^|\n)\*+\s*PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i) ||
+      text.match(/(?:^|\n)PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i);
+
+    if (threatMatch) {
+      primaryThreats = normalizeBlockText(threatMatch[0]).replace(/^\n+/, '');
+      if (!primaryThreats.startsWith('*')) {
+        primaryThreats = '* ' + primaryThreats.replace(/^\*+\s*/, '');
+      }
+    }
+
+    return { areasIncluded, primaryThreats };
+  }
+
+  function mergeSameWatch(base, cached) {
+    if (!base) return cached || null;
+    if (!cached) return base;
+    if (digitsOnly(base.number) && digitsOnly(cached.number) && digitsOnly(base.number) !== digitsOnly(cached.number)) {
+      return base;
+    }
+    return {
+      ...cached,
+      ...base,
+      areasIncluded: base.areasIncluded || cached.areasIncluded || '',
+      primaryThreats: base.primaryThreats || cached.primaryThreats || '',
+      issuedAt: base.issuedAt || cached.issuedAt || '',
+      expiresAtEt: base.expiresAtEt || cached.expiresAtEt || '',
+      expiresAtNative: base.expiresAtNative || cached.expiresAtNative || '',
+      watchType: base.watchType || cached.watchType || '',
+      mapNumber: base.mapNumber || cached.mapNumber || '',
+      mode: base.mode || cached.mode || 'active'
+    };
+  }
+
+  function normalizeWatch(raw, modeHint, cachedPeer) {
+    if (!raw || typeof raw !== 'object') return null;
+
+    const number = choose(raw, ['number', 'watchNumber', 'watch', 'spc', 'id']);
+    const rawType = choose(raw, ['watchType', 'type', 'event', 'headline', 'title', 'name']);
+    const watchType = detectType(rawType, choose(raw, ['isPds', 'pds', 'particularlyDangerous']));
+    const productText = readProductText(raw);
+    const parsed = parseSectionsFromText(productText, watchType);
+
+    const issuedAt = choose(raw, ['issuedAt', 'issued', 'issueTime', 'issuedText', 'times.issued']);
+    const expiresAtEt = choose(raw, ['expiresAtEt', 'expiresEt', 'validUntilEt', 'expirationEt', 'times.expiresEt']);
+    const expiresAtNative = choose(raw, ['expiresAtNative', 'expiresNative', 'validUntilNative', 'expirationNative', 'times.expiresNative']);
+
+    const areasIncluded = normalizeBlockText(
+      choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations']) || parsed.areasIncluded
+    );
+    const primaryThreats = normalizeBlockText(
+      choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText']) || parsed.primaryThreats
+    );
+
+    let normalized = {
+      number: number || '',
+      watchType,
+      issuedAt: issuedAt || '',
+      expiresAtEt: expiresAtEt || '',
+      expiresAtNative: expiresAtNative || '',
+      areasIncluded,
+      primaryThreats,
+      mapNumber: digitsOnly(number),
+      mode: modeHint || choose(raw, ['mode'], 'active')
+    };
+
+    normalized = mergeSameWatch(normalized, cachedPeer);
+
+    normalized.number = normalized.number || FALLBACK_SAMPLE.number;
+    normalized.mapNumber = digitsOnly(normalized.mapNumber || normalized.number) || digitsOnly(FALLBACK_SAMPLE.number);
+    normalized.watchType = normalized.watchType || FALLBACK_SAMPLE.watchType;
+
+    if (!normalized.issuedAt) normalized.issuedAt = FALLBACK_SAMPLE.issuedAt;
+    if (normalized.mode !== 'sample' && !normalized.expiresAtEt) normalized.expiresAtEt = FALLBACK_SAMPLE.expiresAtEt;
+    if (normalized.mode !== 'sample' && !normalized.expiresAtNative) normalized.expiresAtNative = normalized.expiresAtEt || FALLBACK_SAMPLE.expiresAtNative;
+
+    return normalized;
+  }
+
+  function hasCoreText(watch) {
+    return Boolean(
+      watch &&
+      digitsOnly(watch.number || watch.mapNumber) &&
+      normalizeBlockText(watch.areasIncluded).length > 0 &&
+      normalizeBlockText(watch.primaryThreats).length > 0
+    );
+  }
+
+  function getCachedWatch() {
+    try {
+      return JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function applyTightLayout(watch) {
+    const screen = el('screen');
+    screen.classList.remove('tight-1', 'tight-2');
+    const threatLen = (watch.primaryThreats || '').length;
+    const areaLen = (watch.areasIncluded || '').length;
+    if (threatLen > 220 || areaLen > 280) {
+      screen.classList.add('tight-1');
+    }
+    if (threatLen > 320 || areaLen > 430) {
+      screen.classList.remove('tight-1');
+      screen.classList.add('tight-2');
+    }
+
+    const rightPanel = document.querySelector('.right-panel');
+    const safeThreat = Math.max(1, threatLen);
+    const safeArea = Math.max(1, areaLen);
+    const total = safeThreat + safeArea;
+    let threatFr = 0.8 + (safeThreat / total) * 1.35;
+    let areaFr = 0.8 + (safeArea / total) * 1.35;
+
+    if (safeThreat < 120) threatFr -= 0.10;
+    if (safeArea < 140) areaFr -= 0.10;
+
+    threatFr = Math.max(0.88, Math.min(1.75, threatFr));
+    areaFr = Math.max(0.88, Math.min(1.75, areaFr));
+
+    rightPanel.style.setProperty('--threat-row', threatFr.toFixed(2) + 'fr');
+    rightPanel.style.setProperty('--area-row', areaFr.toFixed(2) + 'fr');
+  }
+
+  function renderWatch(watch) {
+    const sampleMode = watch.mode === 'sample';
+    const headerTitle = watch.watchType;
+    const watchNumberLabel = 'WATCH #' + String(watch.number).replace(/^#/, '');
+    const mapUrl = 'https://www.spc.noaa.gov/products/watch/ww' + padWatchNumber(watch.mapNumber) + '_overview_big.gif';
+
+    document.documentElement.style.setProperty('--header-bg', headerTheme(headerTitle));
+    el('watch-type-header').textContent = headerTitle.toUpperCase();
+    el('watch-number-header').textContent = watchNumberLabel;
+    el('issued-value').textContent = watch.issuedAt || '--';
+    el('threats-body').textContent = watch.primaryThreats || 'Primary threats unavailable.';
+    el('areas-body').textContent = watch.areasIncluded || 'Areas included unavailable.';
+    el('map-subtitle').textContent = sampleMode
+      ? 'Most recently issued watch preview'
+      : 'Overview image for the current active watch';
+    el('map-caption').textContent = sampleMode
+      ? 'Sample preview using the most recently issued watch map'
+      : 'Active watch image for ' + headerTitle;
+    el('map-updated').textContent = 'Loaded ' + new Date().toLocaleTimeString([], {
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'
+    });
+    el('footer').textContent = sampleMode
+      ? 'Sample preview only — most recently issued watch shown because no active watches are available.'
+      : 'Live Storm Prediction Center watch information.';
+
+    if (sampleMode) {
+      el('screen').classList.add('sample');
+      el('valid-until-normal').classList.add('hidden');
+      el('valid-until-sample').classList.remove('hidden');
+    } else {
+      el('screen').classList.remove('sample');
+      el('valid-until-sample').classList.add('hidden');
+      el('valid-until-normal').classList.remove('hidden');
+      el('valid-et').textContent = watch.expiresAtEt || '--';
+      el('valid-native').textContent = watch.expiresAtNative || watch.expiresAtEt || '--';
+    }
+
+    const img = el('watch-map');
+    img.src = mapUrl;
+    img.onerror = function () {
+      el('map-caption').textContent = 'SPC watch map image unavailable for watch #' + String(watch.number).replace(/^#/, '');
+    };
+
+    applyTightLayout(watch);
+
+    if (hasCoreText(watch)) {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(watch));
+      } catch (err) {}
+    }
+  }
+
+  function pickRequestedWatch(items) {
+    const requested = digitsOnly(params.get('watch') || params.get('spc') || '');
+    if (!requested) return null;
+    return items.find(item => digitsOnly(item.number) === requested) || null;
+  }
+
+  function chooseRecentCandidate(payload) {
+    const lists = [
+      payload.recentWatches,
+      payload.archivedWatches,
+      payload.previousWatches,
+      payload.lastIssuedWatches,
+      payload.watches
+    ].filter(Array.isArray);
+
+    for (const list of lists) {
+      if (list.length) return list[0];
+    }
+    return null;
+  }
+
+  function fromPayload(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+
+    const cached = getCachedWatch();
+
+    const activeList = Array.isArray(payload.activeWatches) ? payload.activeWatches
+      : Array.isArray(payload.active) ? payload.active
+      : Array.isArray(payload.watches) ? payload.watches.filter(item => {
+          const status = String(choose(item, ['status', 'mode'], '')).toLowerCase();
+          return status.includes('active') || status === '';
+        })
+      : [];
+
+    const normalizedActive = activeList
+      .map(item => normalizeWatch(item, 'active', cached))
+      .filter(Boolean);
+
+    const requested = pickRequestedWatch(normalizedActive);
+    if (requested) return requested;
+    if (normalizedActive.length) return normalizedActive[0];
+
+    const lastIssuedRaw =
+      payload.lastIssuedWatch ||
+      payload.lastIssued ||
+      payload.mostRecentWatch ||
+      payload.lastWatch ||
+      chooseRecentCandidate(payload) ||
+      null;
+
+    const sample = normalizeWatch(lastIssuedRaw, 'sample', cached);
+    if (sample && hasCoreText(sample)) return sample;
+
+    const cachedSample = normalizeWatch(cached, 'sample', cached);
+    if (cachedSample && hasCoreText(cachedSample)) return cachedSample;
+
+    return normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
+  }
+
+  async function init() {
+    updateClock();
+    window.setInterval(updateClock, 1000);
+
+    let watch = null;
+    try {
+      const res = await fetch(API_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const payload = await res.json();
+      watch = fromPayload(payload);
+    } catch (err) {
+      const cached = getCachedWatch();
+      watch = normalizeWatch(cached, 'sample', cached);
+      if (!(watch && hasCoreText(watch))) {
+        watch = normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
+      }
+    }
+
+    renderWatch(watch);
+
+    window.setTimeout(() => {
+      window.location.href = 'subscreen-forecast.html';
+    }, SCREEN_ROTATE_MS);
+  }
+
+  init();
+})();
+</script>
 
 </body>
 </html>
