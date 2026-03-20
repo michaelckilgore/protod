@@ -405,6 +405,7 @@
   <div id="footer" class="footer">Loading Storm Prediction Center watch information.</div>
 </div>
 
+
 <script>
 (function () {
   const SCREEN_ROTATE_MS = 5000;
@@ -438,6 +439,20 @@
   function padWatchNumber(value) {
     const digits = String(value || '').replace(/\D/g, '');
     return (digits || '0').padStart(4, '0');
+  }
+
+  function digitsOnly(value) {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  function normalizeBlockText(value) {
+    return String(value || '')
+      .replace(/\r/g, '')
+      .replace(/\t/g, '     ')
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ ]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   function detectType(rawType, isPds) {
@@ -475,42 +490,134 @@
     return fallback;
   }
 
-  function normalizeWatch(raw, modeHint) {
+  function readProductText(raw) {
+    return normalizeBlockText(
+      choose(raw, [
+        'productText',
+        'rawText',
+        'text',
+        'description',
+        'details',
+        'product.text',
+        'product.description',
+        'properties.description'
+      ])
+    );
+  }
+
+  function parseSectionsFromText(productText, watchType) {
+    const text = normalizeBlockText(productText);
+    if (!text) return { areasIncluded: '', primaryThreats: '' };
+
+    let areasIncluded = '';
+    let primaryThreats = '';
+
+    const areasMatch =
+      text.match(/(?:^|\n)(PDS\s+)?(?:SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i) ||
+      text.match(/(?:^|\n)(?:WATCH FOR PORTIONS OF[\s\S]*?)(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i);
+
+    if (areasMatch) {
+      areasIncluded = normalizeBlockText(areasMatch[0]).replace(/^\n+/, '');
+      areasIncluded = areasIncluded.replace(/^[\s*]+/, '');
+      if (!/watch for portions of/i.test(areasIncluded) && watchType) {
+        areasIncluded = watchType + ' for portions of\n\n' + areasIncluded;
+      }
+    }
+
+    const threatMatch =
+      text.match(/(?:^|\n)\*+\s*PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i) ||
+      text.match(/(?:^|\n)PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i);
+
+    if (threatMatch) {
+      primaryThreats = normalizeBlockText(threatMatch[0]).replace(/^\n+/, '');
+      if (!primaryThreats.startsWith('*')) {
+        primaryThreats = '* ' + primaryThreats.replace(/^\*+\s*/, '');
+      }
+    }
+
+    return { areasIncluded, primaryThreats };
+  }
+
+  function mergeSameWatch(base, cached) {
+    if (!base) return cached || null;
+    if (!cached) return base;
+    if (digitsOnly(base.number) && digitsOnly(cached.number) && digitsOnly(base.number) !== digitsOnly(cached.number)) {
+      return base;
+    }
+    return {
+      ...cached,
+      ...base,
+      areasIncluded: base.areasIncluded || cached.areasIncluded || '',
+      primaryThreats: base.primaryThreats || cached.primaryThreats || '',
+      issuedAt: base.issuedAt || cached.issuedAt || '',
+      expiresAtEt: base.expiresAtEt || cached.expiresAtEt || '',
+      expiresAtNative: base.expiresAtNative || cached.expiresAtNative || '',
+      watchType: base.watchType || cached.watchType || '',
+      mapNumber: base.mapNumber || cached.mapNumber || '',
+      mode: base.mode || cached.mode || 'active'
+    };
+  }
+
+  function normalizeWatch(raw, modeHint, cachedPeer) {
     if (!raw || typeof raw !== 'object') return null;
 
     const number = choose(raw, ['number', 'watchNumber', 'watch', 'spc', 'id']);
-    const watchType = detectType(
-      choose(raw, ['watchType', 'type', 'event', 'headline', 'title', 'name']),
-      choose(raw, ['isPds', 'pds', 'particularlyDangerous'])
-    );
+    const rawType = choose(raw, ['watchType', 'type', 'event', 'headline', 'title', 'name']);
+    const watchType = detectType(rawType, choose(raw, ['isPds', 'pds', 'particularlyDangerous']));
+    const productText = readProductText(raw);
+    const parsed = parseSectionsFromText(productText, watchType);
 
     const issuedAt = choose(raw, ['issuedAt', 'issued', 'issueTime', 'issuedText', 'times.issued']);
     const expiresAtEt = choose(raw, ['expiresAtEt', 'expiresEt', 'validUntilEt', 'expirationEt', 'times.expiresEt']);
     const expiresAtNative = choose(raw, ['expiresAtNative', 'expiresNative', 'validUntilNative', 'expirationNative', 'times.expiresNative']);
 
-    const areasIncluded = choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations']);
-    const primaryThreats = choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText']);
-    const normalized = {
-      number: number || FALLBACK_SAMPLE.number,
+    const areasIncluded = normalizeBlockText(
+      choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations']) || parsed.areasIncluded
+    );
+    const primaryThreats = normalizeBlockText(
+      choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText']) || parsed.primaryThreats
+    );
+
+    let normalized = {
+      number: number || '',
       watchType,
-      issuedAt: issuedAt || FALLBACK_SAMPLE.issuedAt,
-      expiresAtEt: expiresAtEt || FALLBACK_SAMPLE.expiresAtEt,
-      expiresAtNative: expiresAtNative || FALLBACK_SAMPLE.expiresAtNative,
-      areasIncluded: normalizeBlockText(areasIncluded || FALLBACK_SAMPLE.areasIncluded),
-      primaryThreats: normalizeBlockText(primaryThreats || FALLBACK_SAMPLE.primaryThreats),
+      issuedAt: issuedAt || '',
+      expiresAtEt: expiresAtEt || '',
+      expiresAtNative: expiresAtNative || '',
+      areasIncluded,
+      primaryThreats,
+      mapNumber: digitsOnly(number),
       mode: modeHint || choose(raw, ['mode'], 'active')
     };
 
-    normalized.mapNumber = String(normalized.number).replace(/\D/g, '') || String(FALLBACK_SAMPLE.number);
+    normalized = mergeSameWatch(normalized, cachedPeer);
+
+    normalized.number = normalized.number || FALLBACK_SAMPLE.number;
+    normalized.mapNumber = digitsOnly(normalized.mapNumber || normalized.number) || digitsOnly(FALLBACK_SAMPLE.number);
+    normalized.watchType = normalized.watchType || FALLBACK_SAMPLE.watchType;
+
+    if (!normalized.issuedAt) normalized.issuedAt = FALLBACK_SAMPLE.issuedAt;
+    if (normalized.mode !== 'sample' && !normalized.expiresAtEt) normalized.expiresAtEt = FALLBACK_SAMPLE.expiresAtEt;
+    if (normalized.mode !== 'sample' && !normalized.expiresAtNative) normalized.expiresAtNative = normalized.expiresAtEt || FALLBACK_SAMPLE.expiresAtNative;
+
     return normalized;
   }
 
-  function normalizeBlockText(value) {
-    return String(value || '')
-      .replace(/\r/g, '')
-      .replace(/\t/g, '     ')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+  function hasCoreText(watch) {
+    return Boolean(
+      watch &&
+      digitsOnly(watch.number || watch.mapNumber) &&
+      normalizeBlockText(watch.areasIncluded).length > 0 &&
+      normalizeBlockText(watch.primaryThreats).length > 0
+    );
+  }
+
+  function getCachedWatch() {
+    try {
+      return JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    } catch (err) {
+      return null;
+    }
   }
 
   function applyTightLayout(watch) {
@@ -552,9 +659,9 @@
     document.documentElement.style.setProperty('--header-bg', headerTheme(headerTitle));
     el('watch-type-header').textContent = headerTitle.toUpperCase();
     el('watch-number-header').textContent = watchNumberLabel;
-    el('issued-value').textContent = watch.issuedAt;
-    el('threats-body').textContent = watch.primaryThreats;
-    el('areas-body').textContent = watch.areasIncluded;
+    el('issued-value').textContent = watch.issuedAt || '--';
+    el('threats-body').textContent = watch.primaryThreats || 'Primary threats unavailable.';
+    el('areas-body').textContent = watch.areasIncluded || 'Areas included unavailable.';
     el('map-subtitle').textContent = sampleMode
       ? 'Most recently issued watch preview'
       : 'Overview image for the current active watch';
@@ -587,41 +694,71 @@
     };
 
     applyTightLayout(watch);
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(watch));
-    } catch (err) {}
+
+    if (hasCoreText(watch)) {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(watch));
+      } catch (err) {}
+    }
   }
 
   function pickRequestedWatch(items) {
-    const requested = (params.get('watch') || params.get('spc') || '').replace(/\D/g, '');
+    const requested = digitsOnly(params.get('watch') || params.get('spc') || '');
     if (!requested) return null;
-    return items.find(item => String(item.number).replace(/\D/g, '') === requested) || null;
+    return items.find(item => digitsOnly(item.number) === requested) || null;
+  }
+
+  function chooseRecentCandidate(payload) {
+    const lists = [
+      payload.recentWatches,
+      payload.archivedWatches,
+      payload.previousWatches,
+      payload.lastIssuedWatches,
+      payload.watches
+    ].filter(Array.isArray);
+
+    for (const list of lists) {
+      if (list.length) return list[0];
+    }
+    return null;
   }
 
   function fromPayload(payload) {
     if (!payload || typeof payload !== 'object') return null;
 
+    const cached = getCachedWatch();
+
     const activeList = Array.isArray(payload.activeWatches) ? payload.activeWatches
-      : Array.isArray(payload.watches) ? payload.watches
       : Array.isArray(payload.active) ? payload.active
+      : Array.isArray(payload.watches) ? payload.watches.filter(item => {
+          const status = String(choose(item, ['status', 'mode'], '')).toLowerCase();
+          return status.includes('active') || status === '';
+        })
       : [];
 
-    const normalizedActive = activeList.map(item => normalizeWatch(item, 'active')).filter(Boolean);
+    const normalizedActive = activeList
+      .map(item => normalizeWatch(item, 'active', cached))
+      .filter(Boolean);
+
     const requested = pickRequestedWatch(normalizedActive);
     if (requested) return requested;
     if (normalizedActive.length) return normalizedActive[0];
 
-    const lastIssuedRaw = payload.lastIssuedWatch || payload.lastIssued || payload.mostRecentWatch || payload.lastWatch || null;
-    const lastIssued = normalizeWatch(lastIssuedRaw, 'sample');
-    if (lastIssued) return lastIssued;
+    const lastIssuedRaw =
+      payload.lastIssuedWatch ||
+      payload.lastIssued ||
+      payload.mostRecentWatch ||
+      payload.lastWatch ||
+      chooseRecentCandidate(payload) ||
+      null;
 
-    try {
-      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-      const cachedWatch = normalizeWatch(cached, 'sample');
-      if (cachedWatch) return cachedWatch;
-    } catch (err) {}
+    const sample = normalizeWatch(lastIssuedRaw, 'sample', cached);
+    if (sample && hasCoreText(sample)) return sample;
 
-    return normalizeWatch(FALLBACK_SAMPLE, 'sample');
+    const cachedSample = normalizeWatch(cached, 'sample', cached);
+    if (cachedSample && hasCoreText(cachedSample)) return cachedSample;
+
+    return normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
   }
 
   async function init() {
@@ -635,11 +772,11 @@
       const payload = await res.json();
       watch = fromPayload(payload);
     } catch (err) {
-      try {
-        const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-        watch = normalizeWatch(cached, 'sample');
-      } catch (cacheErr) {}
-      if (!watch) watch = normalizeWatch(FALLBACK_SAMPLE, 'sample');
+      const cached = getCachedWatch();
+      watch = normalizeWatch(cached, 'sample', cached);
+      if (!(watch && hasCoreText(watch))) {
+        watch = normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
+      }
     }
 
     renderWatch(watch);
@@ -652,5 +789,6 @@
   init();
 })();
 </script>
+
 </body>
 </html>
