@@ -62,7 +62,7 @@
   .header{
     position:relative;
     display:grid;
-    grid-template-columns:230px 1fr 220px;
+    grid-template-columns:260px 1fr 220px;
     align-items:center;
     gap:18px;
     padding:0 18px;
@@ -92,12 +92,21 @@
     color:var(--red-soft);
   }
 
+  .live-box.sample{
+    color:#ffe9b1;
+  }
+
   .live-dot{
     width:14px;
     height:14px;
     border-radius:50%;
     background:var(--red);
     box-shadow:0 0 0 5px rgba(255,93,93,0.14);
+  }
+
+  .live-box.sample .live-dot{
+    background:var(--gold);
+    box-shadow:0 0 0 5px rgba(255,209,90,0.16);
   }
 
   .title-wrap{
@@ -217,6 +226,12 @@
     text-transform:uppercase;
     letter-spacing:0.8px;
     white-space:nowrap;
+  }
+
+  .watch-badge.sample{
+    border-color:rgba(255,209,90,0.38);
+    background:linear-gradient(180deg, rgba(126,85,12,0.34), rgba(69,43,6,0.18));
+    color:#fff0c0;
   }
 
   .map-frame{
@@ -456,7 +471,7 @@
 <body>
 <div class="screen">
   <div class="header">
-    <div class="live-box"><span class="live-dot"></span><span>Live Watch Coverage</span></div>
+    <div id="live-box" class="live-box"><span class="live-dot"></span><span id="live-box-text">Live Watch Coverage</span></div>
 
     <div class="title-wrap">
       <div class="eyebrow">Sugar Hill Weather Network</div>
@@ -496,7 +511,7 @@
           <div id="watch-number-text" class="watch-box-text">----</div>
         </div>
         <div>
-          <div class="hero-kicker">Current Watch</div>
+          <div id="hero-kicker" class="hero-kicker">Current Watch</div>
           <div id="hero-title" class="hero-title">National Watch Display</div>
           <div id="hero-copy" class="hero-copy">This severe weather screen highlights the active Storm Prediction Center watch while the dashboard continues normal rotation.</div>
         </div>
@@ -529,7 +544,7 @@
         </div>
         <div class="keyline">
           <div class="keyline-label">Behavior</div>
-          <div class="keyline-value">This screen remains part of the normal severe-weather rotation and then returns automatically to the expanded forecast view.</div>
+          <div id="behavior-text" class="keyline-value">This screen remains part of the normal severe-weather rotation and then returns automatically to the expanded forecast view.</div>
         </div>
       </div>
     </div>
@@ -550,6 +565,8 @@
 
 <script>
   const SCREEN_ROTATE_MS = 5000;
+  const API_BASE = window.location.hostname === "localhost" ? "http://localhost:3000" : "";
+  const DEFAULT_SAMPLE_WATCH = "71";
 
   function updateClock() {
     const now = new Date();
@@ -582,32 +599,163 @@
     return "Stay weather aware. Conditions may become favorable for severe storms in the watch area for watch #" + watchNumber + ".";
   }
 
-  function initWatch() {
-    const params = new URLSearchParams(window.location.search);
-    const sampleMode = params.get("sample") !== "0";
-    const fallbackWatch = "50";
-    const fallbackType = "Tornado";
-    const watch = params.get("watch") || params.get("spc") || (sampleMode ? fallbackWatch : "");
-    const watchTypeParam = params.get("type") || params.get("label") || (sampleMode ? fallbackType : "");
+  function getSampleMessage(type, watchNumber) {
+    return "EXPIRED / NOT VALID: archived sample watch #" + watchNumber + " is being shown for layout preview only.";
+  }
 
-    if (!watch) {
-      document.getElementById("watch-title").textContent = "NO WATCH NUMBER";
-      document.getElementById("watch-subtitle").textContent = "Routing back to forecast shortly";
-      document.getElementById("hero-title").textContent = "Watch data unavailable";
-      document.getElementById("hero-copy").textContent = "A watch number was not provided for this screen.";
-      document.getElementById("status-text").textContent = "No SPC watch was supplied to the watch display.";
-      document.getElementById("watch-number-text").textContent = "----";
-      document.getElementById("watch-map-url").textContent = "No map URL available";
-      document.getElementById("map-caption").textContent = "Watch map unavailable";
-      document.getElementById("map-updated").textContent = "No watch loaded";
-      document.getElementById("message-text").textContent = "No active watch data was provided to this screen.";
-      return;
+  function normalizeWatchEntry(entry) {
+    if (entry == null) return null;
+    if (typeof entry === "number" || typeof entry === "string") {
+      return { watchNumber: String(entry).replace(/\D/g, "") || String(entry), type: "SPC" };
     }
 
-    const usingSample = !params.get("watch") && !params.get("spc") && sampleMode;
-    const watchNumber = String(watch).replace(/\D/g, "") || String(watch);
+    const watchNumber = entry.watchNumber || entry.number || entry.watch || entry.id || entry.ww || entry.watch_id || entry.watchId;
+    if (!watchNumber && watchNumber !== 0) return null;
+
+    return {
+      watchNumber: String(watchNumber).replace(/\D/g, "") || String(watchNumber),
+      type: entry.type || entry.watchType || entry.label || entry.event || entry.name || "SPC",
+      coverage: entry.coverage || entry.area || entry.region || entry.scope || "National",
+      issued: entry.issued || entry.issueTime || entry.issuedAt || entry.start || "",
+      expires: entry.expires || entry.ends || entry.end || entry.endTime || ""
+    };
+  }
+
+  function pickLastIssuedFromApi(json) {
+    const candidates = [
+      json?.lastIssuedWatch,
+      json?.mostRecentWatch,
+      json?.latestWatch,
+      json?.lastWatch,
+      json?.sampleWatch,
+      json?.mostRecentlyIssuedWatch,
+      json?.lastIssued
+    ];
+
+    for (const candidate of candidates) {
+      const normalized = normalizeWatchEntry(candidate);
+      if (normalized?.watchNumber) return normalized;
+    }
+
+    return null;
+  }
+
+  async function readSpcPageForLastIssuedWatch() {
+    try {
+      const response = await fetch("https://www.spc.noaa.gov/products/watch/", { cache: "no-store" });
+      if (!response.ok) return null;
+      const html = await response.text();
+      const match = html.match(/Most recently issued watch\s*#(\d{1,4})/i);
+      if (!match) return null;
+      return {
+        watchNumber: match[1],
+        type: "SPC",
+        coverage: "Archived",
+        issued: "",
+        expires: ""
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function chooseWatchSource() {
+    const params = new URLSearchParams(window.location.search);
+    const explicitWatch = params.get("watch") || params.get("spc");
+    const explicitType = params.get("type") || params.get("label") || "SPC";
+    const forceSample = params.get("sample") === "1";
+
+    if (explicitWatch) {
+      return {
+        mode: forceSample ? "sample" : "active",
+        watchNumber: String(explicitWatch).replace(/\D/g, "") || String(explicitWatch),
+        type: explicitType,
+        coverage: forceSample ? "Archived" : "National"
+      };
+    }
+
+    let apiJson = null;
+    try {
+      const response = await fetch(API_BASE + "/api/spc-watches", { cache: "no-store" });
+      if (response.ok) {
+        apiJson = await response.json();
+      }
+    } catch (err) {
+      apiJson = null;
+    }
+
+    const activeRaw = Array.isArray(apiJson?.watches)
+      ? apiJson.watches
+      : Array.isArray(apiJson?.activeWatches)
+        ? apiJson.activeWatches
+        : [];
+
+    const activeWatches = activeRaw.map(normalizeWatchEntry).filter(Boolean);
+
+    if (activeWatches.length) {
+      const i = Number.parseInt(localStorage.getItem("shrsLiveWatchIndex") || "0", 10) || 0;
+      const watch = activeWatches[i % activeWatches.length];
+      localStorage.setItem("shrsLiveWatchIndex", String(i + 1));
+      localStorage.setItem("shrsMostRecentWatch", JSON.stringify(watch));
+      return {
+        mode: "active",
+        watchNumber: watch.watchNumber,
+        type: watch.type,
+        coverage: watch.coverage || "National",
+        issued: watch.issued || "",
+        expires: watch.expires || ""
+      };
+    }
+
+    const lastIssuedFromApi = pickLastIssuedFromApi(apiJson);
+    if (lastIssuedFromApi?.watchNumber) {
+      localStorage.setItem("shrsMostRecentWatch", JSON.stringify(lastIssuedFromApi));
+      return {
+        mode: "sample",
+        watchNumber: lastIssuedFromApi.watchNumber,
+        type: lastIssuedFromApi.type,
+        coverage: "Archived",
+        issued: lastIssuedFromApi.issued || "",
+        expires: lastIssuedFromApi.expires || ""
+      };
+    }
+
+    const cachedMostRecent = normalizeWatchEntry(JSON.parse(localStorage.getItem("shrsMostRecentWatch") || "null"));
+    if (cachedMostRecent?.watchNumber) {
+      return {
+        mode: "sample",
+        watchNumber: cachedMostRecent.watchNumber,
+        type: cachedMostRecent.type,
+        coverage: "Archived",
+        issued: cachedMostRecent.issued || "",
+        expires: cachedMostRecent.expires || ""
+      };
+    }
+
+    const spcLastIssued = await readSpcPageForLastIssuedWatch();
+    if (spcLastIssued?.watchNumber) {
+      localStorage.setItem("shrsMostRecentWatch", JSON.stringify(spcLastIssued));
+      return {
+        mode: "sample",
+        watchNumber: spcLastIssued.watchNumber,
+        type: spcLastIssued.type,
+        coverage: "Archived"
+      };
+    }
+
+    return {
+      mode: "sample",
+      watchNumber: DEFAULT_SAMPLE_WATCH,
+      type: "SPC",
+      coverage: "Archived"
+    };
+  }
+
+  function applyState(state) {
+    const watchNumber = state.watchNumber;
     const padded = padWatchNumber(watchNumber);
-    const type = inferWatchType(watchTypeParam);
+    const type = inferWatchType(state.type);
+    const isSample = state.mode === "sample";
     const mapUrl = "https://www.spc.noaa.gov/products/watch/ww" + padded + "_overview_big.gif";
     const nowLabel = new Date().toLocaleTimeString([], {
       hour: "numeric",
@@ -617,31 +765,68 @@
     });
 
     document.getElementById("watch-title").textContent = type === "SPC" ? "WATCH #" + watchNumber : type.toUpperCase() + " WATCH #" + watchNumber;
-    document.getElementById("watch-subtitle").textContent = usingSample ? "Storm Prediction Center overview map · sample preview" : "Storm Prediction Center overview map";
+    document.getElementById("watch-subtitle").textContent = isSample
+      ? "Archived Storm Prediction Center watch · EXPIRED / NOT VALID"
+      : "Storm Prediction Center overview map";
     document.getElementById("watch-number-text").textContent = "#" + watchNumber;
-    document.getElementById("hero-title").textContent = type === "SPC" ? "National SPC Watch" : type + " Watch";
-    document.getElementById("hero-copy").textContent = usingSample
-      ? "Sample preview mode is active so you can review the watch layout even when there are no live SPC watches."
+    document.getElementById("hero-kicker").textContent = isSample ? "Archived Sample Watch" : "Current Watch";
+    document.getElementById("hero-title").textContent = isSample
+      ? (type === "SPC" ? "Expired Watch Sample" : type + " Watch Sample")
+      : (type === "SPC" ? "National SPC Watch" : type + " Watch");
+    document.getElementById("hero-copy").textContent = isSample
+      ? "This screen is using the most recently issued watch as an archived preview. It is expired and not valid, and should only be used to review the layout when no active SPC watch exists."
       : "Monitor the current watch area on the overview map while the dashboard remains in normal severe-weather rotation.";
+
     document.getElementById("watch-type").textContent = type;
-    document.getElementById("watch-status").textContent = usingSample ? "Sample" : "Active";
-    document.getElementById("watch-badge").textContent = type === "SPC" ? "SPC Watch" : type + " Watch";
-    document.getElementById("status-text").textContent = usingSample
-      ? "This screen is presenting sample Storm Prediction Center watch coverage for preview and layout testing using watch #" + watchNumber + "."
+    document.getElementById("watch-coverage").textContent = isSample ? "Archived" : (state.coverage || "National");
+    document.getElementById("watch-status").textContent = isSample ? "Expired / Not Valid" : "Active";
+    document.getElementById("watch-badge").textContent = isSample ? "Expired Sample" : (type === "SPC" ? "SPC Watch" : type + " Watch");
+    document.getElementById("watch-badge").classList.toggle("sample", isSample);
+    document.getElementById("live-box").classList.toggle("sample", isSample);
+    document.getElementById("live-box-text").textContent = isSample ? "Expired / Not Valid Sample" : "Live Watch Coverage";
+
+    document.getElementById("status-text").textContent = isSample
+      ? "No active SPC watches were available, so this screen fell back to the most recently issued watch (#" + watchNumber + ") strictly for archived preview use. EXPIRED / NOT VALID."
       : "This screen is presenting live Storm Prediction Center watch coverage for watch #" + watchNumber + ".";
+    document.getElementById("behavior-text").textContent = isSample
+      ? "When a live watch becomes active, this sample view should disappear and the screen should show the active watch instead."
+      : "This screen remains part of the normal severe-weather rotation and then returns automatically to the expanded forecast view.";
     document.getElementById("watch-map-url").textContent = mapUrl;
-    document.getElementById("map-caption").textContent = usingSample ? "Sample watch image for preview using SPC watch #" + watchNumber : "Active watch image for SPC watch #" + watchNumber;
-    document.getElementById("map-updated").textContent = (usingSample ? "Sample loaded " : "Loaded ") + nowLabel;
-    document.getElementById("message-text").textContent = usingSample
-      ? "Sample preview mode: this layout is showing watch #" + watchNumber + " so you can evaluate the design when no current watches exist."
+    document.getElementById("map-caption").textContent = isSample
+      ? "Archived SPC watch image for preview only · EXPIRED / NOT VALID"
+      : "Active watch image for SPC watch #" + watchNumber;
+    document.getElementById("map-updated").textContent = (isSample ? "Sample loaded " : "Loaded ") + nowLabel;
+    document.getElementById("message-text").textContent = isSample
+      ? getSampleMessage(type, watchNumber)
       : getMessageForType(type, watchNumber);
 
     const img = document.getElementById("watch-map");
     img.src = mapUrl;
     img.onerror = function () {
-      document.getElementById("status-text").textContent = "The SPC map image could not be loaded for watch #" + watchNumber + ".";
+      document.getElementById("status-text").textContent = isSample
+        ? "The archived SPC map image could not be loaded for sample watch #" + watchNumber + ". EXPIRED / NOT VALID."
+        : "The SPC map image could not be loaded for watch #" + watchNumber + ".";
       document.getElementById("map-caption").textContent = "Map image unavailable";
     };
+  }
+
+  async function initWatch() {
+    const state = await chooseWatchSource();
+    if (!state?.watchNumber) {
+      document.getElementById("watch-title").textContent = "WATCH UNAVAILABLE";
+      document.getElementById("watch-subtitle").textContent = "Routing back to forecast shortly";
+      document.getElementById("hero-title").textContent = "Watch data unavailable";
+      document.getElementById("hero-copy").textContent = "A watch number was not available for this screen.";
+      document.getElementById("status-text").textContent = "No SPC watch could be loaded for the watch display.";
+      document.getElementById("watch-number-text").textContent = "----";
+      document.getElementById("watch-map-url").textContent = "No map URL available";
+      document.getElementById("map-caption").textContent = "Watch map unavailable";
+      document.getElementById("map-updated").textContent = "No watch loaded";
+      document.getElementById("message-text").textContent = "No active or archived watch data was available to this screen.";
+      return;
+    }
+
+    applyState(state);
   }
 
   updateClock();
