@@ -241,7 +241,7 @@
 
   .right-panel {
     display: grid;
-    grid-template-rows: auto auto 1fr 1fr;
+    grid-template-rows: auto minmax(0, var(--threat-row, 1.08fr)) minmax(0, var(--area-row, 0.92fr));
     gap: 12px;
     padding: 14px;
     min-height: 0;
@@ -305,6 +305,10 @@
     white-space: pre-wrap;
     word-break: normal;
     overflow: hidden;
+  }
+
+  .dynamic-card {
+    min-height: 0;
   }
 
   .threats-body {
@@ -391,14 +395,9 @@
         <div id="threats-body" class="text-body threats-body">Loading...</div>
       </div>
 
-      <div class="text-card">
+      <div class="text-card dynamic-card">
         <div class="text-label">Areas Included</div>
         <div id="areas-body" class="text-body areas-body">Loading...</div>
-      </div>
-
-      <div class="text-card">
-        <div class="text-label">Watch Notes</div>
-        <div id="notes-body" class="text-body areas-body">Waiting for watch details...</div>
       </div>
     </div>
   </div>
@@ -420,7 +419,6 @@
     expiresAtNative: '9:00 PM CDT',
     areasIncluded: 'Severe Thunderstorm Watch for portions of\n\nSoutheast Missouri\nSouthern Illinois\nSouthwest Indiana\nWestern Kentucky',
     primaryThreats: '* Primary threats include...\n     Scattered damaging wind gusts to 70 mph possible\n     A tornado or two possible',
-    notes: 'Fallback sample is shown only when no active watch and no last-issued watch details are available from the backend or local cache.',
     mapNumber: 71,
     mode: 'sample'
   };
@@ -492,8 +490,6 @@
 
     const areasIncluded = choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations']);
     const primaryThreats = choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText']);
-    const notes = choose(raw, ['notes', 'summary', 'description'], 'Storm Prediction Center watch display.');
-
     const normalized = {
       number: number || FALLBACK_SAMPLE.number,
       watchType,
@@ -502,7 +498,6 @@
       expiresAtNative: expiresAtNative || FALLBACK_SAMPLE.expiresAtNative,
       areasIncluded: normalizeBlockText(areasIncluded || FALLBACK_SAMPLE.areasIncluded),
       primaryThreats: normalizeBlockText(primaryThreats || FALLBACK_SAMPLE.primaryThreats),
-      notes: normalizeBlockText(notes || FALLBACK_SAMPLE.notes),
       mode: modeHint || choose(raw, ['mode'], 'active')
     };
 
@@ -530,6 +525,22 @@
       screen.classList.remove('tight-1');
       screen.classList.add('tight-2');
     }
+
+    const rightPanel = document.querySelector('.right-panel');
+    const safeThreat = Math.max(1, threatLen);
+    const safeArea = Math.max(1, areaLen);
+    const total = safeThreat + safeArea;
+    let threatFr = 0.8 + (safeThreat / total) * 1.35;
+    let areaFr = 0.8 + (safeArea / total) * 1.35;
+
+    if (safeThreat < 120) threatFr -= 0.10;
+    if (safeArea < 140) areaFr -= 0.10;
+
+    threatFr = Math.max(0.88, Math.min(1.75, threatFr));
+    areaFr = Math.max(0.88, Math.min(1.75, areaFr));
+
+    rightPanel.style.setProperty('--threat-row', threatFr.toFixed(2) + 'fr');
+    rightPanel.style.setProperty('--area-row', areaFr.toFixed(2) + 'fr');
   }
 
   function renderWatch(watch) {
@@ -544,7 +555,6 @@
     el('issued-value').textContent = watch.issuedAt;
     el('threats-body').textContent = watch.primaryThreats;
     el('areas-body').textContent = watch.areasIncluded;
-    el('notes-body').textContent = watch.notes;
     el('map-subtitle').textContent = sampleMode
       ? 'Most recently issued watch preview'
       : 'Overview image for the current active watch';
@@ -630,7 +640,6 @@
         watch = normalizeWatch(cached, 'sample');
       } catch (cacheErr) {}
       if (!watch) watch = normalizeWatch(FALLBACK_SAMPLE, 'sample');
-      el('notes-body').textContent = 'Backend watch feed unavailable. Showing preserved sample watch content.';
     }
 
     renderWatch(watch);
