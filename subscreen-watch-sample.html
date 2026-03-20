@@ -2,217 +2,53 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Sample Tornado Watch</title>
+<title>Watch Screen Redirect</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  :root{
-    --bg1:#03142f;
-    --bg2:#021126;
-    --text:#eef6ff;
-    --muted:#bcd2e8;
-    --gold:#f4bf34;
-    --panel:rgba(5,17,38,0.92);
-    --line:rgba(255,255,255,0.16);
-  }
-  *{box-sizing:border-box}
   html,body{
     margin:0;
     width:100%;
     height:100%;
     overflow:hidden;
     font-family:Arial, Helvetica, sans-serif;
-    background:radial-gradient(circle at top, #0a2a56 0%, var(--bg1) 38%, var(--bg2) 100%);
-    color:var(--text);
-  }
-  .screen{
-    width:100%;
-    height:100%;
+    color:#eef6ff;
+    background:linear-gradient(180deg,#0b3365 0%, #071d3d 38%, #020c1b 100%);
     display:grid;
-    grid-template-rows:92px 1fr 30px;
-    gap:14px;
-    padding:12px 16px 10px;
+    place-items:center;
   }
-  .header{
-    display:grid;
-    grid-template-columns:260px 1fr 220px;
-    align-items:center;
-    border:1px solid var(--line);
-    border-radius:16px;
-    background:linear-gradient(180deg, rgba(8,27,58,0.96), rgba(4,16,35,0.96));
-    box-shadow:0 10px 30px rgba(0,0,0,0.28);
-    padding:0 18px;
-  }
-  .sample-tag{
-    color:#ff8585;
-    font-size:18px;
-    font-weight:700;
-    letter-spacing:0.4px;
-  }
-  .title-wrap{
+  .box{
+    width:min(920px, 92vw);
+    padding:26px 32px;
+    border-radius:20px;
+    border:1px solid rgba(255,255,255,0.12);
+    background:linear-gradient(180deg, rgba(9,31,61,0.96), rgba(3,15,31,0.96));
+    box-shadow:0 18px 34px rgba(0,0,0,0.34);
     text-align:center;
   }
   .title{
-    color:var(--gold);
-    font-size:42px;
+    color:#ffd15a;
+    font-size:40px;
     font-weight:900;
-    line-height:1;
-    letter-spacing:0.6px;
+    letter-spacing:0.8px;
+    text-transform:uppercase;
+    margin-bottom:10px;
   }
-  .subtitle{
-    margin-top:6px;
+  .copy{
     font-size:22px;
-    font-weight:700;
-  }
-  .clock{
-    text-align:right;
-    font-size:28px;
-    font-weight:700;
-  }
-  .content{
-    display:grid;
-    grid-template-columns:1.45fr 0.95fr;
-    gap:18px;
-    min-height:0;
-  }
-  .panel{
-    border:1px solid var(--line);
-    border-radius:18px;
-    background:var(--panel);
-    overflow:hidden;
-    box-shadow:0 10px 30px rgba(0,0,0,0.28);
-  }
-  .map-panel{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:12px;
-  }
-  .map-panel img{
-    width:100%;
-    height:100%;
-    object-fit:contain;
-    background:#0a1222;
-    border-radius:12px;
-  }
-  .info{
-    display:grid;
-    grid-template-rows:auto auto 1fr auto;
-    gap:14px;
-    padding:18px 20px;
-  }
-  .block-title{
-    color:var(--gold);
-    font-size:24px;
-    font-weight:900;
-    letter-spacing:0.5px;
-    margin-bottom:6px;
-  }
-  .watch-text{
-    font-size:22px;
-    line-height:1.3;
-  }
-  .list{
-    margin:0;
-    padding-left:24px;
-    font-size:24px;
-    line-height:1.45;
-  }
-  .list li{ margin-bottom:10px; }
-  .note{
-    color:var(--muted);
-    font-size:18px;
-  }
-  .footer{
-    text-align:center;
-    color:#8aa5c6;
-    font-size:16px;
-    letter-spacing:0.4px;
+    line-height:1.35;
+    color:#eef6ff;
   }
 </style>
 </head>
 <body>
-<div class="screen">
-  <div class="header">
-    <div class="sample-tag">SAMPLE – WATCH DISPLAY TEST</div>
-    <div class="title-wrap">
-      <div class="title">TORNADO WATCH #50</div>
-      <div class="subtitle">Until 1:00 PM EDT</div>
-    </div>
-    <div id="watch-clock" class="clock">--:--</div>
+  <div class="box">
+    <div class="title">Watch Sample Redirect</div>
+    <div class="copy">This legacy sample screen now forwards to <strong>subscreen-watch.html</strong>, which uses a live watch when one exists and otherwise falls back to the most recently issued archived watch marked <strong>EXPIRED / NOT VALID</strong>.</div>
   </div>
-
-  <div class="content">
-    <div class="panel map-panel">
-      <img
-        src="https://www.spc.noaa.gov/products/watch/ww0050_overview_big.gif"
-        alt="SPC Tornado Watch 50 overview map">
-    </div>
-
-    <div class="panel info">
-      <div>
-        <div class="block-title">WATCH AREA</div>
-        <div class="watch-text">Far Eastern and Southeastern Georgia</div>
-        <div class="watch-text">Much of Central and Southern South Carolina</div>
-      </div>
-
-      <div>
-        <div class="block-title">PRIMARY THREATS</div>
-        <ul class="list">
-          <li>A couple tornadoes possible</li>
-          <li>Isolated damaging wind gusts to 70 mph possible</li>
-        </ul>
-      </div>
-
-      <div>
-        <div class="block-title">SOURCE</div>
-        <div class="note">SPC Tornado Watch 50 sample layout for rotation testing.</div>
-      </div>
-
-      <div class="note">Not a live dashboard trigger. Prototype sample only.</div>
-    </div>
-  </div>
-
-  <div class="footer">Sample watch screen stays in rotation while live watch support is being built.</div>
-</div>
-
 <script>
-  const SCREEN_ROTATE_MS = 5000;
-
-  function updateClock() {
-    const now = new Date();
-    const str = now.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-      timeZoneName: "short"
-    });
-    document.getElementById("watch-clock").textContent = str;
-  }
-
-  async function goNext() {
-    try {
-      const response = await fetch("http://localhost:3000/api/spc-watches", { cache: "no-store" });
-      if (response.ok) {
-        const json = await response.json();
-        const watches = Array.isArray(json?.watches) ? json.watches : [];
-        if (watches.length) {
-          const i = Number.parseInt(localStorage.getItem("shrsLiveWatchIndex") || "0", 10) || 0;
-          const watch = watches[i % watches.length];
-          localStorage.setItem("shrsLiveWatchIndex", String(i + 1));
-          window.location.href = "subscreen-watch.html?watch=" + encodeURIComponent(String(watch));
-          return;
-        }
-      }
-    } catch (err) {
-      console.error("SPC watch lookup failed:", err);
-    }
-
-    window.location.href = "subscreen-forecast.html";
-  }
-
-  updateClock();
-  window.setInterval(updateClock, 1000);
-  window.setTimeout(goNext, SCREEN_ROTATE_MS);
+  window.setTimeout(function () {
+    window.location.replace("subscreen-watch.html");
+  }, 250);
 </script>
 </body>
 </html>
