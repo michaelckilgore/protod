@@ -561,7 +561,6 @@
     return {
       ...cached,
       ...base,
-      productText: base.productText || cached.productText || '',
       areasIncluded: base.areasIncluded || cached.areasIncluded || '',
       primaryThreats: base.primaryThreats || cached.primaryThreats || '',
       issuedAt: base.issuedAt || cached.issuedAt || '',
@@ -585,7 +584,6 @@
     let normalized = {
       number: number || '',
       watchType,
-      productText,
       issuedAt: choose(raw, ['issuedAt', 'issued', 'issueTime', 'issuedText', 'times.issued']) || '',
       expiresAtEt: choose(raw, ['expiresAtEt', 'expiresEt', 'validUntilEt', 'expirationEt', 'times.expiresEt']) || '',
       expiresAtNative: choose(raw, ['expiresAtNative', 'expiresNative', 'validUntilNative', 'expirationNative', 'times.expiresNative']) || '',
@@ -653,7 +651,7 @@
   }
 
   function renderWatch(watch) {
-    const sampleMode = watch.mode === 'sample';
+    const sampleMode = false;
     const headerTitle = watch.watchType;
     const watchNumberLabel = 'WATCH #' + String(watch.number).replace(/^#/, '');
     const mapUrl = 'https://www.spc.noaa.gov/products/watch/ww' + padWatchNumber(watch.mapNumber) + '_overview_big.gif';
@@ -669,15 +667,9 @@
     el('map-updated').textContent = 'Loaded ' + new Date().toLocaleTimeString([], {
       hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'
     });
-    el('footer').textContent = sampleMode
-      ? 'Sample preview only — most recently issued watch shown because no active watches are available.'
-      : 'Live Storm Prediction Center watch information.';
+    el('footer').textContent = 'Live Storm Prediction Center watch information.';
 
-    if (sampleMode) {
-      el('screen').classList.add('sample');
-      el('valid-until-normal').classList.add('hidden');
-      el('valid-until-sample').classList.remove('hidden');
-    } else {
+    if (false) {
       el('screen').classList.remove('sample');
       el('valid-until-sample').classList.add('hidden');
       el('valid-until-normal').classList.remove('hidden');
@@ -695,10 +687,7 @@
 
     if (hasCoreText(watch)) {
       try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({
-          ...watch,
-          productText: watch.productText || ''
-        }));
+        localStorage.setItem(CACHE_KEY, JSON.stringify(watch));
       } catch (err) {}
     }
   }
@@ -735,43 +724,19 @@
   function buildState(payload) {
     if (!payload || typeof payload !== 'object') return null;
 
-    const cached = getCachedWatch();
-
     const activeList = Array.isArray(payload.activeWatches) ? payload.activeWatches
       : Array.isArray(payload.active) ? payload.active
-      : Array.isArray(payload.watches) ? payload.watches.filter(item => {
-          const status = String(choose(item, ['status', 'mode'], '')).toLowerCase();
-          return status.includes('active') || status === '';
-        })
-      : [];
+      : Array.isArray(payload.watches) ? payload.watches : [];
 
-    const activeWatches = sortByWatchNumber(
-      activeList.map(item => normalizeWatch(item, 'active', cached)).filter(Boolean)
-    );
+    const activeWatches = activeList.map(item => normalizeWatch(item, 'active')).filter(Boolean);
 
-    if (activeWatches.length) {
-      return {
-        mode: 'active',
-        currentWatch: pickRequestedWatch(activeWatches) || activeWatches[0],
-        activeWatches
-      };
-    }
+    if (!activeWatches.length) return null;
 
-    const lastIssuedRaw =
-      payload.lastIssuedWatch ||
-      payload.lastIssued ||
-      payload.mostRecentWatch ||
-      payload.lastWatch ||
-      chooseRecentCandidate(payload) ||
-      null;
-
-    const sample = normalizeWatch(lastIssuedRaw, 'sample', cached);
-    if (sample && hasCoreText(sample)) return { mode: 'sample', currentWatch: sample, activeWatches: [] };
-
-    const cachedSample = normalizeWatch(cached, 'sample', cached);
-    if (cachedSample && hasCoreText(cachedSample)) return { mode: 'sample', currentWatch: cachedSample, activeWatches: [] };
-
-    return { mode: 'sample', currentWatch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null), activeWatches: [] };
+    return {
+      mode: 'active',
+      currentWatch: activeWatches[0],
+      activeWatches
+    };
   }
 
   function scheduleNext(state) {
