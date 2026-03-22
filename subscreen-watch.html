@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -521,29 +522,34 @@
     const text = normalizeBlockText(productText);
     if (!text) return { areasIncluded: '', primaryThreats: '' };
 
+    const compact = text.replace(/\r/g, '');
+
     let areasIncluded = '';
     let primaryThreats = '';
 
     const areasMatch =
-      text.match(/(?:^|\n)(PDS\s+)?(?:SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i) ||
-      text.match(/(?:^|\n)(?:WATCH FOR PORTIONS OF[\s\S]*?)(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i);
+      compact.match(/(?:^|\n)(?:PDS\s+)?(?:SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*?\s*PRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n$)/i) ||
+      compact.match(/(?:^|\n)WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*?\s*PRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n$)/i);
 
     if (areasMatch) {
-      areasIncluded = normalizeBlockText(areasMatch[0]).replace(/^\n+/, '');
-      areasIncluded = areasIncluded.replace(/^[\s*]+/, '');
-      if (!/watch for portions of/i.test(areasIncluded) && watchType) {
-        areasIncluded = watchType + ' for portions of\n\n' + areasIncluded;
-      }
+      areasIncluded = normalizeBlockText(areasMatch[0])
+        .replace(/^\*+\s*/, '')
+        .replace(/^WATCH\s+FOR\s+PORTIONS\s+OF/i, (watchType || 'Watch') + ' for portions of')
+        .replace(/^(PDS\s+)?(SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF/i, () => {
+          return (watchType || 'Watch') + ' for portions of';
+        });
     }
 
     const threatMatch =
-      text.match(/(?:^|\n)\*+\s*PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i) ||
-      text.match(/(?:^|\n)PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i);
+      compact.match(/(?:^|\n)\*?\s*PRIMARY THREATS INCLUDE\s*\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n$)/i) ||
+      compact.match(/(?:^|\n)\*?\s*PRIMARY THREATS INCLUDE[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n$)/i);
 
     if (threatMatch) {
-      primaryThreats = normalizeBlockText(threatMatch[0]).replace(/^\n+/, '');
-      if (!primaryThreats.startsWith('*')) {
-        primaryThreats = '* ' + primaryThreats.replace(/^\*+\s*/, '');
+      primaryThreats = normalizeBlockText(threatMatch[0]).replace(/^\*+\s*/, '');
+      primaryThreats = primaryThreats.replace(/^PRIMARY THREATS INCLUDE\s*\.\.\./i, '').trim();
+      primaryThreats = primaryThreats.replace(/^PRIMARY THREATS INCLUDE/i, '').trim();
+      if (primaryThreats && !primaryThreats.startsWith('*')) {
+        primaryThreats = '* ' + primaryThreats;
       }
     }
 
@@ -584,10 +590,12 @@
     const expiresAtNative = choose(raw, ['expiresAtNative', 'expiresNative', 'validUntilNative', 'expirationNative', 'times.expiresNative']);
 
     const areasIncluded = normalizeBlockText(
-      parsed.areasIncluded || choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations'])
+      parsed.areasIncluded ||
+      choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations'])
     );
     const primaryThreats = normalizeBlockText(
-      parsed.primaryThreats || choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText'])
+      parsed.primaryThreats ||
+      choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText'])
     );
 
     let normalized = {
@@ -735,8 +743,20 @@
     return null;
   }
 
-  function fromPayload(payload) {
-    if (!payload || typeof payload !== 'object') return { watch: null, activeList: [] };
+  function sortByWatchNumber(items) {
+    return [...items].sort((a, b) => {
+      const aNum = parseInt(digitsOnly(a.number || a.mapNumber), 10) || 0;
+      const bNum = parseInt(digitsOnly(b.number || b.mapNumber), 10) || 0;
+      return aNum - bNum;
+    });
+  }
+
+  function getRequestedWatchNumber() {
+    return digitsOnly(params.get('watch') || params.get('spc') || '');
+  }
+
+  function buildStateFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') return null;
 
     const cached = getCachedWatch();
 
@@ -748,14 +768,28 @@
         })
       : [];
 
-    const normalizedActive = activeList
-      .map(item => normalizeWatch(item, 'active', cached))
-      .filter(Boolean)
-      .sort((a, b) => Number(digitsOnly(a.number)) - Number(digitsOnly(b.number)));
+    const normalizedActive = sortByWatchNumber(
+      activeList.map(item => normalizeWatch(item, 'active', cached)).filter(Boolean)
+    );
 
-    const requested = pickRequestedWatch(normalizedActive);
-    if (requested) return { watch: requested, activeList: normalizedActive };
-    if (normalizedActive.length) return { watch: normalizedActive[0], activeList: normalizedActive };
+    const requestedNumber = getRequestedWatchNumber();
+    let current = null;
+
+    if (requestedNumber) {
+      current = normalizedActive.find(item => digitsOnly(item.number) === requestedNumber) || null;
+    }
+
+    if (!current && normalizedActive.length) {
+      current = normalizedActive[0];
+    }
+
+    if (current) {
+      return {
+        mode: 'active',
+        activeWatches: normalizedActive,
+        currentWatch: current
+      };
+    }
 
     const lastIssuedRaw =
       payload.lastIssuedWatch ||
@@ -766,53 +800,73 @@
       null;
 
     const sample = normalizeWatch(lastIssuedRaw, 'sample', cached);
-    if (sample && hasCoreText(sample)) return { watch: sample, activeList: [] };
+    if (sample && hasCoreText(sample)) {
+      return { mode: 'sample', activeWatches: [], currentWatch: sample };
+    }
 
     const cachedSample = normalizeWatch(cached, 'sample', cached);
-    if (cachedSample && hasCoreText(cachedSample)) return { watch: cachedSample, activeList: [] };
+    if (cachedSample && hasCoreText(cachedSample)) {
+      return { mode: 'sample', activeWatches: [], currentWatch: cachedSample };
+    }
 
-    return { watch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null), activeList: [] };
+    return {
+      mode: 'sample',
+      activeWatches: [],
+      currentWatch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null)
+    };
   }
 
+  function scheduleNext(state) {
+    window.setTimeout(() => {
+      if (state && state.mode === 'active' && Array.isArray(state.activeWatches) && state.activeWatches.length > 1) {
+        const currentNumber = digitsOnly(state.currentWatch.number || state.currentWatch.mapNumber);
+        const ordered = sortByWatchNumber(state.activeWatches);
+        const currentIndex = ordered.findIndex(item => digitsOnly(item.number || item.mapNumber) === currentNumber);
 
-  function getNextHref(currentWatch, activeList) {
-    const currentNum = digitsOnly(currentWatch && (currentWatch.number || currentWatch.mapNumber));
-    if (Array.isArray(activeList) && activeList.length > 1 && currentNum) {
-      const idx = activeList.findIndex(item => digitsOnly(item.number || item.mapNumber) === currentNum);
-      if (idx >= 0 && idx < activeList.length - 1) {
-        return 'subscreen-watch.html?spc=' + digitsOnly(activeList[idx + 1].number || activeList[idx + 1].mapNumber);
+        if (currentIndex >= 0 && currentIndex < ordered.length - 1) {
+          const nextWatch = ordered[currentIndex + 1];
+          const nextNum = digitsOnly(nextWatch.number || nextWatch.mapNumber);
+          window.location.href = 'subscreen-watch.html?spc=' + encodeURIComponent(nextNum);
+          return;
+        }
       }
-    }
-    return 'subscreen-forecast.html';
+
+      window.location.href = 'subscreen-forecast.html';
+    }, SCREEN_ROTATE_MS);
   }
 
   async function init() {
     updateClock();
     window.setInterval(updateClock, 1000);
 
-    let watch = null;
-    let activeList = [];
+    let state = null;
     try {
       const res = await fetch(API_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const payload = await res.json();
-      const result = fromPayload(payload);
-      watch = result.watch;
-      activeList = result.activeList || [];
+      state = buildStateFromPayload(payload);
     } catch (err) {
       const cached = getCachedWatch();
-      watch = normalizeWatch(cached, 'sample', cached);
-      if (!(watch && hasCoreText(watch))) {
-        watch = normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
-      }
+      const fallbackWatch = normalizeWatch(cached, 'sample', cached);
+      state = {
+        mode: 'sample',
+        activeWatches: [],
+        currentWatch: (fallbackWatch && hasCoreText(fallbackWatch))
+          ? fallbackWatch
+          : normalizeWatch(FALLBACK_SAMPLE, 'sample', null)
+      };
     }
 
-    renderWatch(watch);
+    if (!state || !state.currentWatch) {
+      state = {
+        mode: 'sample',
+        activeWatches: [],
+        currentWatch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null)
+      };
+    }
 
-    const nextHref = getNextHref(watch, activeList);
-    window.setTimeout(() => {
-      window.location.href = nextHref;
-    }, SCREEN_ROTATE_MS);
+    renderWatch(state.currentWatch);
+    scheduleNext(state);
   }
 
   init();
