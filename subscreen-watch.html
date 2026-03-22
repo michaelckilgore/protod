@@ -732,9 +732,11 @@
 
     if (!activeWatches.length) return null;
 
+    const requested = pickRequestedWatch(activeWatches);
+
     return {
       mode: 'active',
-      currentWatch: activeWatches[0],
+      currentWatch: requested || activeWatches[0],
       activeWatches
     };
   }
