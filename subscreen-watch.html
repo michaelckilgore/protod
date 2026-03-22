@@ -584,12 +584,10 @@
     const expiresAtNative = choose(raw, ['expiresAtNative', 'expiresNative', 'validUntilNative', 'expirationNative', 'times.expiresNative']);
 
     const areasIncluded = normalizeBlockText(
-      parsed.areasIncluded ||
-      choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations'])
+      parsed.areasIncluded || choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations'])
     );
     const primaryThreats = normalizeBlockText(
-      parsed.primaryThreats ||
-      choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText'])
+      parsed.primaryThreats || choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText'])
     );
 
     let normalized = {
@@ -738,7 +736,7 @@
   }
 
   function fromPayload(payload) {
-    if (!payload || typeof payload !== 'object') return null;
+    if (!payload || typeof payload !== 'object') return { watch: null, activeList: [] };
 
     const cached = getCachedWatch();
 
@@ -752,11 +750,12 @@
 
     const normalizedActive = activeList
       .map(item => normalizeWatch(item, 'active', cached))
-      .filter(Boolean);
+      .filter(Boolean)
+      .sort((a, b) => Number(digitsOnly(a.number)) - Number(digitsOnly(b.number)));
 
     const requested = pickRequestedWatch(normalizedActive);
-    if (requested) return requested;
-    if (normalizedActive.length) return normalizedActive[0];
+    if (requested) return { watch: requested, activeList: normalizedActive };
+    if (normalizedActive.length) return { watch: normalizedActive[0], activeList: normalizedActive };
 
     const lastIssuedRaw =
       payload.lastIssuedWatch ||
@@ -767,12 +766,24 @@
       null;
 
     const sample = normalizeWatch(lastIssuedRaw, 'sample', cached);
-    if (sample && hasCoreText(sample)) return sample;
+    if (sample && hasCoreText(sample)) return { watch: sample, activeList: [] };
 
     const cachedSample = normalizeWatch(cached, 'sample', cached);
-    if (cachedSample && hasCoreText(cachedSample)) return cachedSample;
+    if (cachedSample && hasCoreText(cachedSample)) return { watch: cachedSample, activeList: [] };
 
-    return normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
+    return { watch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null), activeList: [] };
+  }
+
+
+  function getNextHref(currentWatch, activeList) {
+    const currentNum = digitsOnly(currentWatch && (currentWatch.number || currentWatch.mapNumber));
+    if (Array.isArray(activeList) && activeList.length > 1 && currentNum) {
+      const idx = activeList.findIndex(item => digitsOnly(item.number || item.mapNumber) === currentNum);
+      if (idx >= 0 && idx < activeList.length - 1) {
+        return 'subscreen-watch.html?spc=' + digitsOnly(activeList[idx + 1].number || activeList[idx + 1].mapNumber);
+      }
+    }
+    return 'subscreen-forecast.html';
   }
 
   async function init() {
@@ -780,11 +791,14 @@
     window.setInterval(updateClock, 1000);
 
     let watch = null;
+    let activeList = [];
     try {
       const res = await fetch(API_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const payload = await res.json();
-      watch = fromPayload(payload);
+      const result = fromPayload(payload);
+      watch = result.watch;
+      activeList = result.activeList || [];
     } catch (err) {
       const cached = getCachedWatch();
       watch = normalizeWatch(cached, 'sample', cached);
@@ -795,8 +809,9 @@
 
     renderWatch(watch);
 
+    const nextHref = getNextHref(watch, activeList);
     window.setTimeout(() => {
-      window.location.href = 'subscreen-forecast.html';
+      window.location.href = nextHref;
     }, SCREEN_ROTATE_MS);
   }
 
