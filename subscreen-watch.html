@@ -735,10 +735,8 @@
     return null;
   }
 
-  function fromPayload(payload) {
-    if (!payload || typeof payload !== 'object') return null;
-
-    const cached = getCachedWatch();
+  function getNormalizedActiveWatches(payload, cached) {
+    if (!payload || typeof payload !== 'object') return [];
 
     const activeList = Array.isArray(payload.activeWatches) ? payload.activeWatches
       : Array.isArray(payload.active) ? payload.active
@@ -748,14 +746,13 @@
         })
       : [];
 
-    const normalizedActive = activeList
+    return activeList
       .map(item => normalizeWatch(item, 'active', cached))
-      .filter(Boolean);
+      .filter(Boolean)
+      .sort((a, b) => Number(digitsOnly(a.number)) - Number(digitsOnly(b.number)));
+  }
 
-    const requested = pickRequestedWatch(normalizedActive);
-    if (requested) return requested;
-    if (normalizedActive.length) return normalizedActive[0];
-
+  function buildFallbackWatch(payload, cached) {
     const lastIssuedRaw =
       payload.lastIssuedWatch ||
       payload.lastIssued ||
@@ -773,16 +770,57 @@
     return normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
   }
 
+  function fromPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+      return { watch: null, activeWatches: [] };
+    }
+
+    const cached = getCachedWatch();
+    const activeWatches = getNormalizedActiveWatches(payload, cached);
+
+    const requested = pickRequestedWatch(activeWatches);
+    if (requested) return { watch: requested, activeWatches };
+    if (activeWatches.length) return { watch: activeWatches[0], activeWatches };
+
+    return {
+      watch: buildFallbackWatch(payload, cached),
+      activeWatches: []
+    };
+  }
+
+  function getNextWatchHref(currentWatch, activeWatches) {
+    if (!currentWatch || currentWatch.mode === 'sample' || !Array.isArray(activeWatches) || !activeWatches.length) {
+      return 'subscreen-forecast.html';
+    }
+
+    const currentDigits = digitsOnly(currentWatch.number || currentWatch.mapNumber);
+    const currentIndex = activeWatches.findIndex((item) => digitsOnly(item.number || item.mapNumber) === currentDigits);
+
+    if (currentIndex >= 0 && currentIndex < activeWatches.length - 1) {
+      const nextWatch = activeWatches[currentIndex + 1];
+      const nextDigits = digitsOnly(nextWatch.number || nextWatch.mapNumber);
+      if (nextDigits) {
+        return 'subscreen-watch.html?spc=' + encodeURIComponent(nextDigits);
+      }
+    }
+
+    return 'subscreen-forecast.html';
+  }
+
   async function init() {
     updateClock();
     window.setInterval(updateClock, 1000);
 
     let watch = null;
+    let activeWatches = [];
+
     try {
       const res = await fetch(API_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const payload = await res.json();
-      watch = fromPayload(payload);
+      const resolved = fromPayload(payload);
+      watch = resolved.watch;
+      activeWatches = resolved.activeWatches;
     } catch (err) {
       const cached = getCachedWatch();
       watch = normalizeWatch(cached, 'sample', cached);
@@ -793,8 +831,9 @@
 
     renderWatch(watch);
 
+    const nextHref = getNextWatchHref(watch, activeWatches);
     window.setTimeout(() => {
-      window.location.href = 'subscreen-forecast.html';
+      window.location.href = nextHref;
     }, SCREEN_ROTATE_MS);
   }
 
