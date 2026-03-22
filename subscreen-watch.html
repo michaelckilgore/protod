@@ -583,11 +583,18 @@
     const expiresAtEt = choose(raw, ['expiresAtEt', 'expiresEt', 'validUntilEt', 'expirationEt', 'times.expiresEt']);
     const expiresAtNative = choose(raw, ['expiresAtNative', 'expiresNative', 'validUntilNative', 'expirationNative', 'times.expiresNative']);
 
+    const rawAreas = normalizeBlockText(
+      choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations'])
+    );
+    const rawThreats = normalizeBlockText(
+      choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText'])
+    );
+
     const areasIncluded = normalizeBlockText(
-      choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations']) || parsed.areasIncluded
+      parsed.areasIncluded || rawAreas
     );
     const primaryThreats = normalizeBlockText(
-      choose(raw, ['primaryThreats', 'threats', 'primaryThreatText', 'threatText']) || parsed.primaryThreats
+      /primary threats include/i.test(rawThreats) ? rawThreats : (parsed.primaryThreats || rawThreats)
     );
 
     let normalized = {
