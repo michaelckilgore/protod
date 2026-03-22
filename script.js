@@ -1686,8 +1686,8 @@ function getNextScreenHref() {
 
   if (path.endsWith("index.html") || path.endsWith("/prototypeb-main/") || path.endsWith("/")) return "subscreen-current.html";
   if (path.endsWith("subscreen-current.html")) return "subscreen-regional-map.html";
-  if (path.endsWith("subscreen-regional-map.html")) return "subscreen-watch-sample.html";
-  if (path.endsWith("subscreen-watch-sample.html")) return "subscreen-forecast.html";
+  if (path.endsWith("subscreen-regional-map.html")) return "subscreen-watch.html";
+  if (path.endsWith("subscreen-watch-sample.html")) return "subscreen-watch.html";
   if (path.endsWith("subscreen-watch.html")) return "subscreen-forecast.html";
   if (path.endsWith("subscreen-forecast.html")) return "index.html";
   return "subscreen-current.html";
