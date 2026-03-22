@@ -561,6 +561,7 @@
     return {
       ...cached,
       ...base,
+      productText: base.productText || cached.productText || '',
       areasIncluded: base.areasIncluded || cached.areasIncluded || '',
       primaryThreats: base.primaryThreats || cached.primaryThreats || '',
       issuedAt: base.issuedAt || cached.issuedAt || '',
@@ -584,6 +585,7 @@
     let normalized = {
       number: number || '',
       watchType,
+      productText,
       issuedAt: choose(raw, ['issuedAt', 'issued', 'issueTime', 'issuedText', 'times.issued']) || '',
       expiresAtEt: choose(raw, ['expiresAtEt', 'expiresEt', 'validUntilEt', 'expirationEt', 'times.expiresEt']) || '',
       expiresAtNative: choose(raw, ['expiresAtNative', 'expiresNative', 'validUntilNative', 'expirationNative', 'times.expiresNative']) || '',
@@ -693,7 +695,10 @@
 
     if (hasCoreText(watch)) {
       try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(watch));
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          ...watch,
+          productText: watch.productText || ''
+        }));
       } catch (err) {}
     }
   }
