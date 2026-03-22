@@ -1,5 +1,4 @@
 
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -522,32 +521,31 @@
     const text = normalizeBlockText(productText);
     if (!text) return { areasIncluded: '', primaryThreats: '' };
 
-    const compact = text.replace(/\r/g, '');
-
     let areasIncluded = '';
     let primaryThreats = '';
 
     const areasMatch =
-      compact.match(/(?:^|\n)(?:PDS\s+)?(?:SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*?\s*PRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n$)/i) ||
-      compact.match(/(?:^|\n)WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*?\s*PRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n$)/i);
+      text.match(/(?:^|\n)(PDS\s+)?(?:SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i) ||
+      text.match(/(?:^|\n)(?:WATCH FOR PORTIONS OF[\s\S]*?)(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i);
 
     if (areasMatch) {
-      areasIncluded = normalizeBlockText(areasMatch[0])
-        .replace(/^\*+\s*/, '')
-        .replace(/^WATCH\s+FOR\s+PORTIONS\s+OF/i, (watchType || 'Watch') + ' for portions of')
-        .replace(/^(PDS\s+)?(SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF/i, () => {
-          return (watchType || 'Watch') + ' for portions of';
-        });
+      areasIncluded = normalizeBlockText(areasMatch[0]).replace(/^\n+/, '');
+      areasIncluded = areasIncluded.replace(/^[\s*]+/, '');
+      areasIncluded = areasIncluded.replace(/^(PDS\s+)?(SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF/i, (watchType || 'Watch') + ' for portions of');
+      if (!/watch for portions of/i.test(areasIncluded) && watchType) {
+        areasIncluded = watchType + ' for portions of\n\n' + areasIncluded;
+      }
     }
 
     const threatMatch =
-      compact.match(/(?:^|\n)\*?\s*PRIMARY THREATS INCLUDE\s*\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n$)/i) ||
-      compact.match(/(?:^|\n)\*?\s*PRIMARY THREATS INCLUDE[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n$)/i);
+      text.match(/(?:^|\n)\*+\s*PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i) ||
+      text.match(/(?:^|\n)PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\n\s*$)/i);
 
     if (threatMatch) {
-      primaryThreats = normalizeBlockText(threatMatch[0]).replace(/^\*+\s*/, '');
-      primaryThreats = primaryThreats.replace(/^PRIMARY THREATS INCLUDE\s*\.\.\./i, '').trim();
-      primaryThreats = primaryThreats.replace(/^PRIMARY THREATS INCLUDE/i, '').trim();
+      primaryThreats = normalizeBlockText(threatMatch[0]).replace(/^\n+/, '');
+      primaryThreats = primaryThreats.replace(/^\*+\s*PRIMARY THREATS INCLUDE\.\.\./i, '');
+      primaryThreats = primaryThreats.replace(/^PRIMARY THREATS INCLUDE\.\.\./i, '');
+      primaryThreats = primaryThreats.trim();
       if (primaryThreats && !primaryThreats.startsWith('*')) {
         primaryThreats = '* ' + primaryThreats;
       }
@@ -751,10 +749,6 @@
     });
   }
 
-  function getRequestedWatchNumber() {
-    return digitsOnly(params.get('watch') || params.get('spc') || '');
-  }
-
   function buildStateFromPayload(payload) {
     if (!payload || typeof payload !== 'object') return null;
 
@@ -769,25 +763,19 @@
       : [];
 
     const normalizedActive = sortByWatchNumber(
-      activeList.map(item => normalizeWatch(item, 'active', cached)).filter(Boolean)
+      activeList
+        .map(item => normalizeWatch(item, 'active', cached))
+        .filter(Boolean)
     );
 
-    const requestedNumber = getRequestedWatchNumber();
-    let current = null;
+    const requested = pickRequestedWatch(normalizedActive);
+    const currentWatch = requested || normalizedActive[0] || null;
 
-    if (requestedNumber) {
-      current = normalizedActive.find(item => digitsOnly(item.number) === requestedNumber) || null;
-    }
-
-    if (!current && normalizedActive.length) {
-      current = normalizedActive[0];
-    }
-
-    if (current) {
+    if (currentWatch) {
       return {
         mode: 'active',
-        activeWatches: normalizedActive,
-        currentWatch: current
+        currentWatch,
+        activeWatches: normalizedActive
       };
     }
 
@@ -801,36 +789,40 @@
 
     const sample = normalizeWatch(lastIssuedRaw, 'sample', cached);
     if (sample && hasCoreText(sample)) {
-      return { mode: 'sample', activeWatches: [], currentWatch: sample };
+      return {
+        mode: 'sample',
+        currentWatch: sample,
+        activeWatches: []
+      };
     }
 
     const cachedSample = normalizeWatch(cached, 'sample', cached);
     if (cachedSample && hasCoreText(cachedSample)) {
-      return { mode: 'sample', activeWatches: [], currentWatch: cachedSample };
+      return {
+        mode: 'sample',
+        currentWatch: cachedSample,
+        activeWatches: []
+      };
     }
 
     return {
       mode: 'sample',
-      activeWatches: [],
-      currentWatch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null)
+      currentWatch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null),
+      activeWatches: []
     };
   }
 
   function scheduleNext(state) {
     window.setTimeout(() => {
       if (state && state.mode === 'active' && Array.isArray(state.activeWatches) && state.activeWatches.length > 1) {
-        const currentNumber = digitsOnly(state.currentWatch.number || state.currentWatch.mapNumber);
-        const ordered = sortByWatchNumber(state.activeWatches);
-        const currentIndex = ordered.findIndex(item => digitsOnly(item.number || item.mapNumber) === currentNumber);
-
-        if (currentIndex >= 0 && currentIndex < ordered.length - 1) {
-          const nextWatch = ordered[currentIndex + 1];
-          const nextNum = digitsOnly(nextWatch.number || nextWatch.mapNumber);
+        const currentNum = digitsOnly(state.currentWatch.number || state.currentWatch.mapNumber);
+        const idx = state.activeWatches.findIndex(item => digitsOnly(item.number || item.mapNumber) === currentNum);
+        if (idx >= 0 && idx < state.activeWatches.length - 1) {
+          const nextNum = digitsOnly(state.activeWatches[idx + 1].number || state.activeWatches[idx + 1].mapNumber);
           window.location.href = 'subscreen-watch.html?spc=' + encodeURIComponent(nextNum);
           return;
         }
       }
-
       window.location.href = 'subscreen-forecast.html';
     }, SCREEN_ROTATE_MS);
   }
@@ -847,21 +839,14 @@
       state = buildStateFromPayload(payload);
     } catch (err) {
       const cached = getCachedWatch();
-      const fallbackWatch = normalizeWatch(cached, 'sample', cached);
+      let watch = normalizeWatch(cached, 'sample', cached);
+      if (!(watch && hasCoreText(watch))) {
+        watch = normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
+      }
       state = {
         mode: 'sample',
-        activeWatches: [],
-        currentWatch: (fallbackWatch && hasCoreText(fallbackWatch))
-          ? fallbackWatch
-          : normalizeWatch(FALLBACK_SAMPLE, 'sample', null)
-      };
-    }
-
-    if (!state || !state.currentWatch) {
-      state = {
-        mode: 'sample',
-        activeWatches: [],
-        currentWatch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null)
+        currentWatch: watch,
+        activeWatches: []
       };
     }
 
