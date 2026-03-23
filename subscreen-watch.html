@@ -429,18 +429,6 @@
     ? 'http://localhost:3000/api/spc-watches'
     : '/api/spc-watches';
   const CACHE_KEY = 'sugarhill:lastWatchData';
-  const FALLBACK_SAMPLE = {
-    number: 71,
-    watchType: 'Severe Thunderstorm Watch',
-    isPds: false,
-    issuedAt: '4:05 PM EDT',
-    expiresAtEt: '10:00 PM EDT',
-    expiresAtNative: '9:00 PM CDT',
-    areasIncluded: 'Severe Thunderstorm Watch for portions of\n\nDelaware\nCentral and Eastern Maryland\nNortheast North Carolina\nSouthern New Jersey\nSoutheast and Central Virginia\nCoastal Waters',
-    primaryThreats: '* Primary threats include...\n     Scattered damaging wind gusts to 70 mph possible\n     A tornado or two possible',
-    mapNumber: 71,
-    mode: 'sample'
-  };
 
   const el = (id) => document.getElementById(id);
   const params = new URLSearchParams(window.location.search);
@@ -517,41 +505,6 @@
     );
   }
 
-  function parseSectionsFromText(productText, watchType) {
-    const text = normalizeBlockText(productText);
-    if (!text) return { areasIncluded: '', primaryThreats: '' };
-
-    let areasIncluded = '';
-    let primaryThreats = '';
-
-    const areasMatch =
-      text.match(/(?:^|\n)\*?\s*(?:PDS\s+)?(?:SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\nPRECAUTIONARY\/PREPAREDNESS ACTIONS\.\.\.|\n&&|\n\s*$)/i) ||
-      text.match(/(?:^|\n)\*?\s*WATCH\s+FOR\s+PORTIONS\s+OF[\s\S]*?(?=\n\*+\s*PRIMARY THREATS INCLUDE|\nPRIMARY THREATS INCLUDE|\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\nPRECAUTIONARY\/PREPAREDNESS ACTIONS\.\.\.|\n&&|\n\s*$)/i);
-
-    if (areasMatch) {
-      areasIncluded = normalizeBlockText(areasMatch[0])
-        .replace(/^\*+\s*/, '')
-        .replace(/^(?:PDS\s+)?(?:SEVERE THUNDERSTORM|TORNADO)\s+WATCH\s+FOR\s+PORTIONS\s+OF/i, (watchType || 'Watch') + ' for portions of')
-        .replace(/^WATCH\s+FOR\s+PORTIONS\s+OF/i, (watchType || 'Watch') + ' for portions of');
-    }
-
-    const threatMatch =
-      text.match(/(?:^|\n)\*+\s*PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\nPRECAUTIONARY\/PREPAREDNESS ACTIONS\.\.\.|\n&&|\n\s*$)/i) ||
-      text.match(/(?:^|\n)PRIMARY THREATS INCLUDE\.\.\.[\s\S]*?(?=\nDISCUSSION\.\.\.|\nSUMMARY\.\.\.|\nREMEMBER\.\.\.|\nAVIATION\.\.\.|\nPRECAUTIONARY\/PREPAREDNESS ACTIONS\.\.\.|\n&&|\n\s*$)/i);
-
-    if (threatMatch) {
-      primaryThreats = normalizeBlockText(threatMatch[0])
-        .replace(/^\*+\s*PRIMARY THREATS INCLUDE\.\.\./i, '')
-        .replace(/^PRIMARY THREATS INCLUDE\.\.\./i, '')
-        .trim();
-      if (primaryThreats && !primaryThreats.startsWith('*')) {
-        primaryThreats = '* ' + primaryThreats;
-      }
-    }
-
-    return { areasIncluded, primaryThreats };
-  }
-
   function mergeSameWatch(base, cached) {
     if (!base) return cached || null;
     if (!cached) return base;
@@ -579,7 +532,6 @@
     const rawType = choose(raw, ['watchType', 'type', 'event', 'headline', 'title', 'name']);
     const watchType = detectType(rawType, choose(raw, ['isPds', 'pds', 'particularlyDangerous']));
     const productText = readProductText(raw);
-    const parsed = parseSectionsFromText(productText, watchType);
 
     let normalized = {
       number: number || '',
@@ -587,20 +539,22 @@
       issuedAt: choose(raw, ['issuedAt', 'issued', 'issueTime', 'issuedText', 'times.issued']) || '',
       expiresAtEt: choose(raw, ['expiresAtEt', 'expiresEt', 'validUntilEt', 'expirationEt', 'times.expiresEt']) || '',
       expiresAtNative: choose(raw, ['expiresAtNative', 'expiresNative', 'validUntilNative', 'expirationNative', 'times.expiresNative']) || '',
-      areasIncluded: normalizeBlockText(parsed.areasIncluded || choose(raw, ['areasIncluded', 'areas', 'areaText', 'area', 'locations'])),
-      primaryThreats: normalizeBlockText(parsed.primaryThreats),
+      areasIncluded: normalizeBlockText(
+        choose(raw, ['parsedAreasIncluded', 'areasIncluded', 'areas', 'areaText', 'area', 'locations'])
+      ),
+      primaryThreats: normalizeBlockText(
+        choose(raw, ['parsedPrimaryThreats', 'primaryThreats', 'threats', 'primaryThreatText', 'threatText'])
+      ),
       mapNumber: digitsOnly(number),
-      mode: modeHint || choose(raw, ['mode'], 'active')
+      mode: modeHint || choose(raw, ['mode'], 'active'),
+      productText
     };
 
     normalized = mergeSameWatch(normalized, cachedPeer);
 
-    normalized.number = normalized.number || FALLBACK_SAMPLE.number;
-    normalized.mapNumber = digitsOnly(normalized.mapNumber || normalized.number) || digitsOnly(FALLBACK_SAMPLE.number);
-    normalized.watchType = normalized.watchType || FALLBACK_SAMPLE.watchType;
-    if (!normalized.issuedAt) normalized.issuedAt = FALLBACK_SAMPLE.issuedAt;
-    if (normalized.mode !== 'sample' && !normalized.expiresAtEt) normalized.expiresAtEt = FALLBACK_SAMPLE.expiresAtEt;
-    if (normalized.mode !== 'sample' && !normalized.expiresAtNative) normalized.expiresAtNative = normalized.expiresAtEt || FALLBACK_SAMPLE.expiresAtNative;
+    normalized.number = normalized.number || '';
+    normalized.mapNumber = digitsOnly(normalized.mapNumber || normalized.number) || '';
+    normalized.watchType = normalized.watchType || 'Severe Thunderstorm Watch';
 
     return normalized;
   }
@@ -767,14 +721,12 @@
       const payload = await res.json();
       state = buildState(payload);
     } catch (err) {
-      const cached = getCachedWatch();
-      let watch = normalizeWatch(cached, 'sample', cached);
-      if (!(watch && hasCoreText(watch))) watch = normalizeWatch(FALLBACK_SAMPLE, 'sample', null);
-      state = { mode: 'sample', currentWatch: watch, activeWatches: [] };
+      state = null;
     }
 
     if (!state || !state.currentWatch) {
-      state = { mode: 'sample', currentWatch: normalizeWatch(FALLBACK_SAMPLE, 'sample', null), activeWatches: [] };
+      window.location.href = 'subscreen-forecast.html';
+      return;
     }
 
     renderWatch(state.currentWatch);
